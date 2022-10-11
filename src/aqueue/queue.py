@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, AsyncIterator
 from functools import partial
-from typing import cast
+from typing import cast, Generic, TypeVar
+from collections import deque
 from abc import ABC, abstractmethod
+import heapq
 
 import trio
 from attrs import define, field
@@ -15,7 +17,6 @@ from rich.progress import (
     Progress,
     ProgressColumn,
     SpinnerColumn,
-    TaskID,
     TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
@@ -23,12 +24,7 @@ from rich.progress import (
 from rich.table import Table
 
 from aqueue.progress_display import ProgressDisplay
-from aqueue._cvars import (
-    OVERALL_PROGRESS_CVAR,
-    OVERALL_PROGRESS_TASK_CVAR,
-    WORKER_STATUS_PROGRESS_CVAR,
-    WORKER_STATUS_PROGRESS_TASK_CVAR,
-)
+
 
 _WAIT_MESSAGE = "Waiting for work..."
 
@@ -44,6 +40,10 @@ class Item(ABC):
         Do this items work. If any async primitives are to be used in this method, they
         must be compatible with trio.
         """
+
+
+# type for the enqueue function
+EnqueueFn = Callable[[Item], Awaitable[None]]
 
 
 @define(kw_only=True)
@@ -62,8 +62,99 @@ class _UnfinishedTasks:
             self._event.set()
 
 
-# type for the enqueue function
-EnqueueFn = Callable[[Item], Awaitable[None]]
+ItemType = TypeVar("ItemType", bound=Item)
+
+
+@define
+class Queue(Generic[ItemType]):
+    """
+    An unbounded FIFO queue
+    """
+
+    _container: deque[ItemType] = field(init=False, factory=deque)
+    _unfinished_task_count: int = field(init=False, default=0)
+
+    def _put(self, item: ItemType) -> None:
+        self._container.appendleft(item)
+
+    def _get(self) -> ItemType:
+        return self._container.pop()
+
+    def put(self, item: ItemType) -> None:
+        self._put(item)
+        self._unfinished_task_count += 1
+
+    async def get(self) -> ItemType:
+        while self.empty():
+            await trio.sleep(0)
+        return self._get()
+
+    def empty(self) -> bool:
+        return not self._container
+
+    def size(self) -> int:
+        return len(self._container)
+
+    def task_done(self) -> None:
+        self._unfinished_task_count -= 1
+
+    async def join(self) -> None:
+        while self._unfinished_task_count != 0:
+            await trio.sleep(0)
+
+    async def __aiter__(self) -> AsyncIterator[ItemType]:
+        # gather 2 things: a get and a join
+        not_changed = object()
+        item: object | ItemType = not_changed
+
+        async def join_and_cancel(cancel_scope: trio.CancelScope) -> None:
+            await self.join()
+            cancel_scope.cancel()
+
+        async def get_and_cancel(cancel_scope: trio.CancelScope) -> None:
+            nonlocal item
+            item = await self.get()
+            cancel_scope.cancel()
+
+        while True:
+            async with trio.open_nursery() as nursery:
+                nursery.start_soon(join_and_cancel, nursery.cancel_scope)
+                nursery.start_soon(get_and_cancel, nursery.cancel_scope)
+
+            if item is not_changed:
+                return
+            else:
+                yield item  # type: ignore
+
+            item = not_changed  # reset for next iter
+
+
+@define
+class Stack(Queue, Generic[ItemType]):
+    """
+    An unbounded LIFO queue (or stack)
+    """
+
+    def _put(self, item: ItemType) -> None:
+        self._container.append(item)
+
+    def _get(self) -> ItemType:
+        return self._container.pop()
+
+
+@define
+class PriorityQueue(Queue, Generic[ItemType]):
+    """
+    An unbounded priority queue. Items will need to set their own ordering.
+    """
+
+    _container: deque[ItemType] = field(init=False, factory=list)
+
+    def _put(self, item: ItemType) -> None:
+        heapq.heappush(self._container, item)  # type: ignore
+
+    def _get(self) -> ItemType:
+        return heapq.heappop(self._container)  # type: ignore
 
 
 async def _worker(
@@ -71,10 +162,7 @@ async def _worker(
     enqueue: EnqueueFn,
     unfinished_tasks: _UnfinishedTasks,
     progress_display: ProgressDisplay,
-    worker_status_progress_task: TaskID,
 ):
-    # now that we're in our worker, set its progress task
-    WORKER_STATUS_PROGRESS_TASK_CVAR.set(worker_status_progress_task)
 
     async with recv_channel:
         async for item in recv_channel:
@@ -98,11 +186,6 @@ async def _async_run_queue(
         TextColumn("[blue]{task.fields[worker_id]}"),
         TextColumn("[white]{task.description}"),
     )
-    WORKER_STATUS_PROGRESS_CVAR.set(worker_status_progress)
-    worker_status_progress_tasks = [
-        worker_status_progress.add_task(_WAIT_MESSAGE, worker_id=f"#{i}")
-        for i in range(num_workers)
-    ]
 
     overall_progress_columns = overall_progress_columns or [
         SpinnerColumn(),
@@ -113,9 +196,7 @@ async def _async_run_queue(
         BarColumn(),
     ]
     overall_progress = Progress(*overall_progress_columns)
-    overall_progress_task = overall_progress.add_task("Overall", total=None)
-    OVERALL_PROGRESS_CVAR.set(overall_progress)
-    OVERALL_PROGRESS_TASK_CVAR.set(overall_progress_task)
+    overall_progress_task_id = overall_progress.add_task("Overall", total=None)
 
     table = Table.grid()
     table.add_row(Panel(worker_status_progress, title="Worker Status"))
@@ -138,20 +219,26 @@ async def _async_run_queue(
         for item in initial_items or []:
             await enqueue(item)
 
-        progress_display = ProgressDisplay()
+        for i in range(num_workers):
+            worker_status_progress_task_id = worker_status_progress.add_task(
+                _WAIT_MESSAGE, worker_id=f"#{i}"
+            )
+            progress_display = ProgressDisplay(
+                overall_progress=overall_progress,
+                overall_progress_task_id=overall_progress_task_id,
+                worker_status_progress=worker_status_progress,
+                worker_status_progress_task_id=worker_status_progress_task_id,
+            )
 
-        for i, worker_status_progress_task in enumerate(worker_status_progress_tasks):
-            name = f"worker #{i}"
             nursery.start_soon(
                 partial(
                     _worker,
                     recv_channel=recv_channel,
                     enqueue=enqueue,
                     unfinished_tasks=unfinished_tasks,
-                    worker_status_progress_task=worker_status_progress_task,
                     progress_display=progress_display,
                 ),
-                name=name,
+                name=f"worker #{i}",
             )
 
         await done_event.wait()

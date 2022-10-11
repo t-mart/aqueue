@@ -1,11 +1,5 @@
 from attrs import frozen
-
-from aqueue._cvars import (
-    OVERALL_PROGRESS_CVAR,
-    OVERALL_PROGRESS_TASK_CVAR,
-    WORKER_STATUS_PROGRESS_CVAR,
-    WORKER_STATUS_PROGRESS_TASK_CVAR,
-)
+from rich.progress import Progress, TaskID
 
 
 @frozen(kw_only=True)
@@ -14,6 +8,11 @@ class ProgressDisplay:
     Provides access to the display. This is a thin wrapper around some
     rich.progress.Progress methods.
     """
+    _overall_progress: Progress
+    _overall_progress_task_id: TaskID
+    _worker_status_progress: Progress
+    _worker_status_progress_task_id: TaskID
+
     def update_worker_desc(self, desc: str) -> None:
         """
         Update the worker's status.
@@ -27,8 +26,8 @@ class ProgressDisplay:
         )
         ```
         """
-        WORKER_STATUS_PROGRESS_CVAR.get().update(
-            task_id=WORKER_STATUS_PROGRESS_TASK_CVAR.get(),
+        self._worker_status_progress.update(
+            task_id=self._worker_status_progress_task_id,
             description=desc,
         )
 
@@ -45,8 +44,8 @@ class ProgressDisplay:
         )
         ```
         """
-        OVERALL_PROGRESS_CVAR.get().advance(
-            task_id=OVERALL_PROGRESS_TASK_CVAR.get(),
+        self._overall_progress.advance(
+            task_id=self._overall_progress_task_id,
             advance=by,
         )
 
@@ -63,8 +62,8 @@ class ProgressDisplay:
         )
         ```
         """
-        OVERALL_PROGRESS_CVAR.get().update(
-            task_id=OVERALL_PROGRESS_TASK_CVAR.get(),
+        self._overall_progress.update(
+            task_id=self._overall_progress_task_id,
             total=to,
         )
 
@@ -83,9 +82,9 @@ class ProgressDisplay:
         ```
         """
         # yeesh, hacky. rich has questionable interface here
-        task = OVERALL_PROGRESS_CVAR.get()._tasks[OVERALL_PROGRESS_TASK_CVAR.get()]
+        task = self._overall_progress._tasks[self._overall_progress_task_id]
 
-        OVERALL_PROGRESS_CVAR.get().update(
-            task_id=OVERALL_PROGRESS_TASK_CVAR.get(),
+        self._overall_progress.update(
+            task_id=self._overall_progress_task_id,
             total=(task.total or 0) + by,
         )
