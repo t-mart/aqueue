@@ -15,7 +15,7 @@ class RootItem(Item):
 
         for _ in range(num_children):
             await trio.sleep(random.random())
-            await enqueue(ChildItem())
+            enqueue(ChildItem())
 
 
 class ChildItem(Item):

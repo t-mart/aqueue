@@ -5,7 +5,7 @@ import random
 from contextvars import ContextVar
 
 import trio
-from attr import frozen
+from attrs import frozen
 from rich import print
 from rich.progress import (
     BarColumn,
@@ -38,7 +38,7 @@ class IndexItem(Item):
         for page in range(NUM_PAGES):
             # simulate page download and parse
             await trio.sleep(random.random())
-            await enqueue(PageItem(page=page))
+            enqueue(PageItem(page=page))
 
         print("[yellow]Done scraping index")
 
@@ -60,7 +60,7 @@ class PageItem(Item):
         for image in range(NUM_IMAGES):
             # simulate page download and parse
             await trio.sleep(random.random())
-            await enqueue(ImageItem(page=self.page, image=image))
+            enqueue(ImageItem(page=self.page, image=image))
 
 
 @frozen(kw_only=True)
@@ -92,6 +92,7 @@ def main() -> None:
 
     run_queue(
         initial_items=[IndexItem()],
+        queue_type_name="stack",
         num_workers=5,
         overall_progress_columns=[
             SpinnerColumn(),
