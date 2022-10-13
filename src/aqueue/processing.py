@@ -16,9 +16,10 @@ async def _worker(
     queue: Queue[Item],
     progress_display: Display,
     update_queue_size_progress: Callable[..., None],
+    graceful_ctrl_c: bool,
 ):
     async for item in queue:
-        with trio.CancelScope(shield=True):  # let them finish cleanly in case error
+        with trio.CancelScope(shield=graceful_ctrl_c):
             await item.process(queue.put, progress_display)
         progress_display.worker.description = _WAIT_MESSAGE
         update_queue_size_progress()
@@ -33,6 +34,7 @@ async def async_run_queue(
     overall_progress_columns: Iterable[ProgressColumn] | None = None,
     initial_items: Iterable[Item] | None = None,
     num_workers: int = 10,
+    graceful_ctrl_c: bool = True,
 ) -> None:
     """
     An asynchronous version of `run_queue`. This method must be run in a Trio event
@@ -65,6 +67,7 @@ async def async_run_queue(
                     queue=queue,
                     progress_display=progress_display,
                     update_queue_size_progress=update_queue_size_progress,
+                    graceful_ctrl_c=graceful_ctrl_c,
                 ),
                 name=f"worker #{i}",
             )
@@ -78,7 +81,7 @@ def run_queue(
     initial_items: Iterable[Item] | None = None,
     queue_type_name: QueueTypeName = "queue",
     overall_progress_columns: Iterable[ProgressColumn] | None = None,
-    restrict_ctrl_c_to_checkpoints: bool = False,
+    graceful_ctrl_c: bool = True,
 ) -> None:
     """
     Process all items in initial items (and any subsequent items they produce) and
@@ -96,9 +99,9 @@ def run_queue(
     - `overall_progress_columns` is an iterable of columns for the "Overall Progress"
       panel. These must be `rich.progress.ProgressColumn` objects. See
       https://rich.readthedocs.io/en/stable/progress.html#columns.
-    - `restrict_ctrl_c_to_checkpoints` specifies whether pressing Ctrl-C will cancel
-      things abruptly (False) or wait until a "checkpoint" (True). See
-      https://trio.readthedocs.io/en/stable/reference-core.html#trio.run
+    - `graceful_ctrl_c` specifies whether pressing Ctrl-C will stop things abruptly
+      (False) or wait until all the currently worked-on items are finished first (True,
+      the default).
     """
 
     trio.run(
@@ -108,6 +111,7 @@ def run_queue(
             initial_items=initial_items,
             overall_progress_columns=overall_progress_columns,
             num_workers=num_workers,
+            graceful_ctrl_c=graceful_ctrl_c,
         ),
-        restrict_keyboard_interrupt_to_checkpoints=restrict_ctrl_c_to_checkpoints,
+        restrict_keyboard_interrupt_to_checkpoints=False,
     )

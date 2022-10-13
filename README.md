@@ -116,11 +116,10 @@ argument.
 
 If you decide you want to stop your queue processing, press Ctrl-C.
 
-If you've set the `restrict_ctrl_c_to_checkpoints` argument to True, this will cancel the program
-after all the current items are completed, which may be better for cleaning up resources in your
-program. Of course, it may take a long time for the items to complete, as a downside.
-
-Conversely, if set to False, the shutdown will be abrupt (but responsive!).
+If you've set the `graceful_ctrl_c` to False, this will stop the program immediately. If True, the
+default, aqueue will wait for the items currently being worked on to complete (without taking any
+additional items), and _then_ stop. Put another way, the choice is between responsiveness and
+resource cleanup.
 
 #### Setting the look of the panels
 
