@@ -12,66 +12,171 @@ import random
 
 import trio
 
-from aqueue import EnqueueFn, ProgressDisplay, run_queue, Item
+from aqueue import EnqueueFn, Display, run_queue, Item
 
 
-# the top-level item. it makes more items dynamically.
 class RootItem(Item):
-    async def process(
-        self, enqueue: EnqueueFn, progress_display: ProgressDisplay
-    ) -> None:
+    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
         num_children = 3
-        # update the display
-        progress_display.update_worker_desc("Making child items")
-        progress_display.set_overall_total(num_children)
+        display.overall.total = num_children
+        display.worker.description = "Making child items"
 
-        # create some children items
         for _ in range(num_children):
+            # simulate doing work and creating more items
             await trio.sleep(random.random())
-            # call the provided enqueue function
             enqueue(ChildItem())
 
 
-# a dynamically created item
 class ChildItem(Item):
-    async def process(
-        self, enqueue: EnqueueFn, progress_display: ProgressDisplay
-    ) -> None:
-        progress_display.update_worker_desc("Doing work...")
+    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
+        display.worker.description = "Doing work..."
+
+        # Simulate doing work
         await trio.sleep(random.random())
+
+        display.overall.completed += 1
 
 
 def main() -> None:
     run_queue(
-        initial_items=[RootItem()],  # set the first item to kick things off
-        num_workers=2,  # run with 2 workers
+        initial_items=[RootItem()],
+        num_workers=2,
     )
 
 
 if __name__ == "__main__":
     main()
+
 ```
 
 ## Usage Notes
 
-- This library is fully docstringed and type-annotated 🥳
-- You design your items as classes that implement an async `process` method (see source for
-  exact signature). If you'd like, your item class can inherit from `aqueue.Item`. Then, you pass
-  some starting items to the queue in the `initial_items` argument.
-- Any item can create more items by calling the enqueue method passed to `process`.
-- You can set some things in the display by calling the `progress_display` methods. For example,
-  it's probably good feedback to `progress_display.update_worker_desc("Doing something...")`.
-- You may specify the queue type to be:
-  - `queue` - last-in-first-out processing
-  - `stack` - first-in-first-out processing
-  - `priority` - priority queue processing. In this case, your objects should be orderable (with
-     `__lt__`, etc). **Lesser objects will be processed first**, because this code uses a minheap.
-- If you want to share some state, set a global variable or use a
-  [`ContextVar`](https://docs.python.org/3/library/contextvars.html).
-- All async primitives used inside items must be compatible with
-  [Trio](https://trio.readthedocs.io/en/stable/index.html).
-- All the terminal visualization is provided by [Rich](https://rich.readthedocs.io/). Additionally,
-  the arguments to `overall_progress_columns` of `aqueue.run_queue()` are Rich objects.
+### Items
+
+Items are your units of work. They can represent whatever you'd like, such as parts of a website
+that you're trying to scrape: an item for the index page, for subpages, for images, etc.
+
+Each item should be an instance of a class that defines an async `progress` method. As arguments, it
+should accept a `Callable[..., None]` method that will enqueue work and, secondly, a `Display`
+object that gives you access to data in the terminal display:
+
+```python
+import aqueue
+
+class MyItem(aqueue.Item):
+    async def process(self, enqueue: aqueue.EnqueueFn, display: aqueue.Display) -> None:
+        # make an HTTP request, parse it, etc
+        print('My item is processing!')
+
+        # when you discover more items you want to process, enqueue them:
+        enqueue(AnotherItem())
+
+class AnotherItem(aqueue.Item):
+    async def process(self, enqueue: aqueue.EnqueueFn, display: aqueue.Display) -> None:
+        print('Another item is processing!')
+```
+
+Note: as a rule of thumb, you should make a new item class whenever you notice a one-to-many
+relationship. For example, this _one_ page has _many_ images I want to download.
+
+Another note: `process` is async, but because this library uses
+[Trio](https://trio.readthedocs.io/en/stable/index.html) under the hood, you may only use
+Trio-compatible primitives inside `process`. For example, use `trio.sleep`, not `asyncio.sleep`.
+TODO: consider [AnyIO](https://anyio.readthedocs.io/en/stable/) to avoid this problem.
+
+### Starting your Queue
+
+Then, start your queue with an initial item to kick things off.
+
+```python
+aqueue.run_queue(
+    initial_items=[MyItem()],
+    num_workers=2,
+)
+```
+
+#### Queue type
+
+By default, the queue is actually ...a queue -- that is to say that items are processed
+first-in-first-out. Here are all the types you can specify with the `queue_type_name` argument.
+
+- `queue` - first-in-first-out processing, or breadth-first.
+- `stack` - last-in-first-out processing, or depth-first. This one is recommended for website
+  scraping because it quickly yields items fast (versus `queue` that tries to look at all the
+  intermediate pages first).
+- `priority` - priority queue processing. In this case, your item objects should be orderable (with
+  `__lt__`, etc). **Lesser objects will be processed first**, because this code uses a minheap.
+
+#### Number of workers
+
+You can specify the number of workers you'd like to be processing your items with the `num_workers`
+argument.
+
+#### Ctrl-C
+
+If you decide you want to stop your queue processing, press Ctrl-C.
+
+If you've set the `restrict_ctrl_c_to_checkpoints` argument to True, this will cancel the program
+after all the current items are completed, which may be better for cleaning up resources in your
+program. Of course, it may take a long time for the items to complete, as a downside.
+
+Conversely, if set to False, the shutdown will be abrupt (but responsive!).
+
+#### Setting the look of the panels
+
+Currently, only support for configuring the "Overall Progress" panel is supported. By default, the
+panel is very simple. If you want to customize it, provide an iterable of
+`rich.progress.ProgressColumn` objects to the `overall_progress_columns` argument. See
+<https://rich.readthedocs.io/en/stable/progress.html> for more information. (Note that rich provides
+all the nice terminal visualizations for aqueue!)
+
+### Updating the display
+
+As mentioned, each `process` method gets called with an `aqueue.Display` object. The display has two
+properties:
+
+- `worker`, which lets you update the description of the worker who's currently processing this
+  item. `display.worker.description` is the getter/setter for that.
+- `overall`, which lets you access things in "Overall Progress" terminal panel.
+  `display.overall.completed` is a getter/setter for the number of completed things,
+  `display.overall.total` for the total number of things (or None), and `display.overall.total_f`
+  for the total number of things or 0.
+
+These panels are just an informational display for humans. They don't know about the queue churning
+through items of work. Therefore, you must decide what things you want to keep track of, and often,
+you won't be able to determine the complete number of things at the beginning. You'll need to do
+some intermediate processing and increment it slowly as more work is discovered. For example, if you
+want to keep track of images found and downloaded, you often won't be able to do that until you are
+searching deeper into the website.
+
+Lastly, there is some support for configuring the look of the "Overall Progress" panel. To
+`aqueue.run_queue`'s `overall_progress_columns`
+
+### Sharing state
+
+Often, its beneficial to share state from the items so that other items can access it. Using the
+website scrape example again, you may want to keep track of the URLs you've visited so you don't
+scrape them twice.
+
+If this is needed, simply keep a global set/dict/list and store a key for the item. For example, a
+URL string may be a good key.
+
+If you don't want to or can't use a global variable, consider a
+[`ContextVar`](https://docs.python.org/3/library/contextvars.html).
+
+### Persisting state
+
+During development, its probably likely that your program will crash after doing some work. For
+example, maybe your HTTP request timed out or you had a bug in your HTML parsing.
+
+It's a shame to lose that work that's been done. So, if you're looking for a really handy way to
+persist state across runs, check out the built-in
+[`shelve`](https://docs.python.org/3/library/shelve.html) module. It's like a dict that
+automatically saves to a file each time you set a key in it.
+
+### Other cool things
+
+This library is fully docstringed and type-hinted 🥳
 
 ## Installation
 

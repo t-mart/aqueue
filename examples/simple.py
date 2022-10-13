@@ -2,28 +2,29 @@ import random
 
 import trio
 
-from aqueue import EnqueueFn, ProgressDisplay, run_queue, Item
+from aqueue import Display, EnqueueFn, Item, run_queue
 
 
 class RootItem(Item):
-    async def process(
-        self, enqueue: EnqueueFn, progress_display: ProgressDisplay
-    ) -> None:
+    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
         num_children = 3
-        progress_display.update_worker_desc("Making child items")
-        progress_display.set_overall_total(num_children)
+        display.overall.total = num_children
+        display.worker.description = "Making child items"
 
         for _ in range(num_children):
+            # simulate doing work and creating more items
             await trio.sleep(random.random())
             enqueue(ChildItem())
 
 
 class ChildItem(Item):
-    async def process(
-        self, enqueue: EnqueueFn, progress_display: ProgressDisplay
-    ) -> None:
-        progress_display.update_worker_desc("Doing work...")
+    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
+        display.worker.description = "Doing work..."
+
+        # Simulate doing work
         await trio.sleep(random.random())
+
+        display.overall.completed += 1
 
 
 def main() -> None:

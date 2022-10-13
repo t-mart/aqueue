@@ -2,7 +2,7 @@
 # just an example to show a use case and implementation
 
 import random
-from contextvars import ContextVar
+from typing import ClassVar
 
 import trio
 from attrs import frozen
@@ -17,28 +17,29 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from aqueue import EnqueueFn, ProgressDisplay, run_queue, Item
-
-# some piece of shared state that you want items to access
-VISITED_VAR: ContextVar[set[str]] = ContextVar("visited")
+from aqueue import Display, EnqueueFn, Item, run_queue
 
 NUM_PAGES = 5
 NUM_IMAGES = 7
+
+# keep a list of previously downloaded things, in case of restarts
+visited = {"/images/1/2"}
 
 
 @frozen(kw_only=True)
 class IndexItem(Item):
     """Represents the root level of the scrape"""
 
-    async def process(
-        self, enqueue: EnqueueFn, progress_display: ProgressDisplay
-    ) -> None:
-        progress_display.update_worker_desc("[blue]Scraping index at /images")
+    URL: ClassVar[str] = "http://example.com/images"
 
-        for page in range(NUM_PAGES):
-            # simulate page download and parse
-            await trio.sleep(random.random())
-            enqueue(PageItem(page=page))
+    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
+        display.worker.description = f"[blue]Scraping index at {self.URL}"
+
+        # simulate page download and parse
+        await trio.sleep(random.random())
+
+        for page_number in range(NUM_PAGES):
+            enqueue(PageItem(url=f"{self.URL}/{page_number}"))
 
         print("[yellow]Done scraping index")
 
@@ -46,50 +47,40 @@ class IndexItem(Item):
 @frozen(kw_only=True)
 class PageItem(Item):
     """Represents a page on a website to scrape"""
-    page: int
 
-    async def process(
-        self, enqueue: EnqueueFn, progress_display: ProgressDisplay
-    ) -> None:
-        progress_display.update_worker_desc(
-            f"[cyan]scraping page at /images/{self.page}"
-        )
+    url: str
 
-        progress_display.incr_overall_total(NUM_IMAGES)
+    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
+        display.worker.description = f"[cyan]scraping page at {self.url}"
+        display.overall.total_f += NUM_IMAGES
 
-        for image in range(NUM_IMAGES):
+        for image_number in range(NUM_IMAGES):
             # simulate page download and parse
             await trio.sleep(random.random())
-            enqueue(ImageItem(page=self.page, image=image))
+            enqueue(ImageItem(url=f"{self.url}/{image_number}"))
 
 
 @frozen(kw_only=True)
 class ImageItem(Item):
     """Represents a image on a website to scrape"""
-    page: int
-    image: int
 
-    async def process(
-        self, enqueue: EnqueueFn, progress_display: ProgressDisplay
-    ) -> None:
-        image_path = f"/images/{self.page}/{self.image}"
-        progress_display.update_worker_desc(f"[green]downloading image at {image_path}")
+    url: str
 
-        if image_path in VISITED_VAR.get():
-            # simulate skipping download
-            print(f"[violet]Skipping image {image_path}")
-        else:
+    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
+        display.worker.description = f"[green]downloading image at {self.url}"
+
+        if self.url not in visited:
             # simulate download
             await trio.sleep(random.random())
+            visited.add(self.url)
+        else:
+            # simulate skipping download because it's already been downloaded
+            print(f"[violet]Skipping image {self.url}")
 
-        progress_display.advance_overall()
+        display.overall.completed += 1
 
 
 def main() -> None:
-    VISITED_VAR.set(
-        {f"/images/{random.randint(0,NUM_PAGES-1)}/{random.randint(0,NUM_IMAGES-1)}"}
-    )
-
     run_queue(
         initial_items=[IndexItem()],
         queue_type_name="stack",

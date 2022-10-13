@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-from collections.abc import Callable, AsyncIterator
-from typing import Generic, Type, TypeVar
-from collections import deque
-from abc import ABC, abstractmethod
 import heapq
-from typing import Literal
+from abc import ABC, abstractmethod
+from collections import deque
+from collections.abc import AsyncIterator, Callable
+from typing import Generic, Literal, Type, TypeVar
+
 import trio
 from attrs import define, field
-from aqueue.progress_display import ProgressDisplay
+
+from aqueue.display import Display
 
 
 class Item(ABC):
     """An abstract class for items."""
 
     @abstractmethod
-    async def process(
-        self, enqueue: EnqueueFn, progress_display: ProgressDisplay
-    ) -> None:
+    async def process(self, enqueue: EnqueueFn, progress_display: Display) -> None:
         """
         Do this items work. If any async primitives are to be used in this method, they
         must be compatible with trio.

@@ -1,43 +1,30 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Callable
+from collections.abc import Callable, Iterable
 from functools import partial
 
-
 import trio
-from rich.live import Live
-from rich.panel import Panel
-from rich.progress import (
-    BarColumn,
-    Progress,
-    ProgressColumn,
-    SpinnerColumn,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
-from rich.table import Table
+from rich.progress import ProgressColumn
 
-from aqueue.progress_display import ProgressDisplay
-from aqueue.queue import Queue, Item, QueueTypeName, QUEUE_FACTORY
-
+from aqueue.display import Display, DisplaySetuper
+from aqueue.queue import QUEUE_FACTORY, Item, Queue, QueueTypeName
 
 _WAIT_MESSAGE = "Waiting for work..."
 
 
 async def _worker(
     queue: Queue[Item],
-    progress_display: ProgressDisplay,
+    progress_display: Display,
     update_queue_size_progress: Callable[..., None],
 ):
     async for item in queue:
         with trio.CancelScope(shield=True):  # let them finish cleanly in case error
             await item.process(queue.put, progress_display)
-        progress_display.update_worker_desc(_WAIT_MESSAGE)
+        progress_display.worker.description = _WAIT_MESSAGE
         update_queue_size_progress()
         queue.task_done()
 
-    progress_display.update_worker_desc("Done")
+    progress_display.worker.description = "Done"
 
 
 async def async_run_queue(
@@ -53,63 +40,23 @@ async def async_run_queue(
     """
     queue = QUEUE_FACTORY[queue_type_name]()
 
-    worker_status_progress = Progress(
-        SpinnerColumn(),
-        TextColumn("[blue]{task.fields[worker_id]}"),
-        TextColumn("[white]{task.description}"),
+    display = DisplaySetuper.create(
+        overall_progress_columns=overall_progress_columns or []
     )
+    update_queue_size_progress = display.create_update_queue_size_progress_fn(queue)
 
-    queue_stats_progress = Progress(
-        SpinnerColumn(),
-        TextColumn("[blue]Stack Size"),
-        TextColumn("[white]{task.completed} items"),
-        BarColumn(complete_style="cyan", finished_style="cyan"),
-        TextColumn("[white]{task.total} items max"),
-    )
-    queue_stats_progress_task_id = queue_stats_progress.add_task("", total=0)
-
-    def update_queue_size_progress() -> None:
-        new_size = queue.size()
-        old_max = queue_stats_progress._tasks[queue_stats_progress_task_id].total or 0
-
-        queue_stats_progress.update(
-            task_id=queue_stats_progress_task_id,
-            completed=new_size,
-            total=max(old_max, new_size),
-        )
-
-    overall_progress_columns = overall_progress_columns or [
-        SpinnerColumn(),
-        TextColumn("[blue]{task.description}"),
-        TaskProgressColumn(show_speed=True),
-        TextColumn("[green]{task.completed}"),
-        TimeElapsedColumn(),
-        BarColumn(),
-    ]
-    overall_progress = Progress(*overall_progress_columns)
-    overall_progress_task_id = overall_progress.add_task("Overall", total=None)
-
-    table = Table.grid()
-    table.add_row(Panel(worker_status_progress, title="Worker Status"))
-    table.add_row(Panel(queue_stats_progress, title="Queue Stats"))
-    table.add_row(Panel(overall_progress, title="Overall Progress"))
-
-    live = Live(table)
-    live.start()
+    display.live.start()
 
     async with trio.open_nursery() as nursery:
         for item in initial_items or []:
             queue.put(item)
 
         for i in range(num_workers):
-            worker_status_progress_task_id = worker_status_progress.add_task(
+            worker_status_progress_task_id = display.worker_status_progress.add_task(
                 _WAIT_MESSAGE, worker_id=f"#{i}"
             )
-            progress_display = ProgressDisplay(
-                overall_progress=overall_progress,
-                overall_progress_task_id=overall_progress_task_id,
-                worker_status_progress=worker_status_progress,
-                worker_status_progress_task_id=worker_status_progress_task_id,
+            progress_display = display.create_progress_display(
+                worker_status_progress_task_id
             )
 
             nursery.start_soon(
@@ -122,7 +69,7 @@ async def async_run_queue(
                 name=f"worker #{i}",
             )
 
-    live.stop()
+    display.live.stop()
 
 
 def run_queue(

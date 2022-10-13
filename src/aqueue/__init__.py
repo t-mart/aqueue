@@ -1,9 +1,9 @@
-from aqueue.progress_display import ProgressDisplay
+from aqueue.display import Display
+from aqueue.processing import async_run_queue, run_queue
 from aqueue.queue import EnqueueFn, Item, QueueTypeName
-from aqueue.processing import run_queue, async_run_queue
 
 __all__ = (
-    "ProgressDisplay",
+    "Display",
     "EnqueueFn",
     "Item",
     "QueueTypeName",
