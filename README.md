@@ -64,7 +64,7 @@ that you're trying to scrape: an item for the index page, for subpages, for imag
 Each item should be an instance of a class that defines an async `progress` method. As arguments, it
 should accept two positional arguments:
 
-1. a `aqueue.EnqueueFn` that caan be called to enqueue more work. That type is simply an alias for
+1. a `aqueue.EnqueueFn` that can be called to enqueue more work. That type is simply an alias for
    `Callable[[Item], None]`.
 2. a `aqueue.Display` object that gives you control of the terminal display:
 
