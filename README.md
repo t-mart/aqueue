@@ -2,8 +2,8 @@
 
 ![demo](docs/demo.gif)
 
-An async queue with live progress display. Good for running and visualizing "tree-like" processing
-jobs, such as website scrapes.
+An async queue with live progress display. Good for running and visualizing tree-like I/O-bound
+processing jobs, such as website scrapes.
 
 ## Example
 
@@ -51,14 +51,22 @@ if __name__ == "__main__":
 
 ## Usage Notes
 
+There's two things you need to do to use aqueue:
+
+1. Write your [Item](#items) classes
+2. [Start your queue](#starting-your-queue) with one of those items
+
 ### Items
 
 Items are your units of work. They can represent whatever you'd like, such as parts of a website
 that you're trying to scrape: an item for the index page, for subpages, for images, etc.
 
 Each item should be an instance of a class that defines an async `progress` method. As arguments, it
-should accept a `Callable[..., None]` method that will enqueue work and, secondly, a `Display`
-object that gives you access to data in the terminal display:
+should accept two positional arguments:
+
+1. a `aqueue.EnqueueFn` that caan be called to enqueue more work. That type is simply an alias for
+   `Callable[[Item], None]`.
+2. a `aqueue.Display` object that gives you control of the terminal display:
 
 ```python
 import aqueue
@@ -76,17 +84,20 @@ class AnotherItem(aqueue.Item):
         print('Another item is processing!')
 ```
 
-Note: as a rule of thumb, you should make a new item class whenever you notice a one-to-many
-relationship. For example, this _one_ page has _many_ images I want to download.
+As a rule of thumb, you should make a new item class whenever you notice a one-to-many relationship.
+For example, this _one_ page has _many_ images I want to download.
 
-Another note: `process` is async, but because this library uses
+Note: `process` is async, but because this library uses
 [Trio](https://trio.readthedocs.io/en/stable/index.html) under the hood, you may only use
 Trio-compatible primitives inside `process`. For example, use `trio.sleep`, not `asyncio.sleep`.
-TODO: consider [AnyIO](https://anyio.readthedocs.io/en/stable/) to avoid this problem.
+TODO: consider [AnyIO](https://anyio.readthedocs.io/en/stable/) to avoid this problem?
+
+Disclaimer: aqueue, or any asynchronous framework, is only going to be helpful if you're performing
+work is I/O-bound.
 
 ### Starting your Queue
 
-Then, start your queue with an initial item to kick things off.
+Then, start your queue with an initial item(s) to kick things off.
 
 ```python
 aqueue.run_queue(
@@ -119,7 +130,7 @@ If you decide you want to stop your queue processing, press Ctrl-C.
 If you've set the `graceful_ctrl_c` to False, this will stop the program immediately. If True, the
 default, aqueue will wait for the items currently being worked on to complete (without taking any
 additional items), and _then_ stop. Put another way, the choice is between responsiveness and
-resource cleanup.
+resource consistency.
 
 #### Setting the look of the panels
 
@@ -148,14 +159,10 @@ some intermediate processing and increment it slowly as more work is discovered.
 want to keep track of images found and downloaded, you often won't be able to do that until you are
 searching deeper into the website.
 
-Lastly, there is some support for configuring the look of the "Overall Progress" panel. To
-`aqueue.run_queue`'s `overall_progress_columns`
-
 ### Sharing state
 
-Often, its beneficial to share state from the items so that other items can access it. Using the
-website scrape example again, you may want to keep track of the URLs you've visited so you don't
-scrape them twice.
+Often, its beneficial to share state between the items. Using the website scrape example again, you
+may want to keep track of the URLs you've visited so you don't scrape them twice.
 
 If this is needed, simply keep a global set/dict/list and store a key for the item. For example, a
 URL string may be a good key.
