@@ -102,8 +102,8 @@ first-in-first-out. Here are all the types you can specify with the `queue_type_
 
 - `queue` - first-in-first-out processing, or breadth-first.
 - `stack` - last-in-first-out processing, or depth-first. This one is recommended for website
-  scraping because it quickly yields items fast (versus `queue` that tries to look at all the
-  intermediate pages first).
+  scraping because it yields items fast (versus `queue` that tries to look at all the intermediate
+  pages first).
 - `priority` - priority queue processing. In this case, your item objects should be orderable (with
   `__lt__`, etc). **Lesser objects will be processed first**, because this code uses a minheap.
 
