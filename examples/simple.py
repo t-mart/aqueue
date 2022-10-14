@@ -8,13 +8,16 @@ from aqueue import EnqueueFn, Item, SetDescFn, run_queue
 
 class RootItem(Item):
     async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
-        num_children = 3
+        # display what we're doing in the worker status panel
         set_desc("Making child items")
 
-        for _ in range(num_children):
+        for _ in range(3):
             # simulate doing work and creating more items
             await trio.sleep(random.random())
             enqueue(ChildItem())
+
+    async def after_children_processed(self) -> None:
+        print("All done!")
 
 
 class ChildItem(Item):

@@ -7,15 +7,6 @@ from typing import ClassVar
 import trio
 from attrs import frozen
 from rich import print
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    SpinnerColumn,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
 
 from aqueue import EnqueueFn, Item, SetDescFn, run_queue
 
@@ -44,7 +35,7 @@ class IndexItem(Item):
         print("[yellow]Done scraping index")
 
     async def after_children_processed(self) -> None:
-        print("all done")
+        print("All done!")
 
 
 @frozen(kw_only=True)
@@ -87,15 +78,6 @@ def main() -> None:
         initial_items=[IndexItem()],
         queue_type_name="stack",
         num_workers=5,
-        overall_progress_columns=[
-            SpinnerColumn(),
-            TextColumn("[blue]{task.description}"),
-            MofNCompleteColumn(),
-            TaskProgressColumn(),
-            BarColumn(),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-        ],
         graceful_ctrl_c=True,
     )
 

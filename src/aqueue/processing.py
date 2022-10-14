@@ -4,7 +4,6 @@ from collections.abc import Callable, Iterable
 from functools import partial
 
 import trio
-from rich.progress import ProgressColumn
 
 from aqueue.display import WAIT_MESSAGE, Display, LinkedTask
 from aqueue.queue import QUEUE_FACTORY, Item, ItemNode, Queue, QueueTypeName
@@ -19,12 +18,13 @@ async def _worker(
 ):
     async for item_node in queue:
 
-        def enqueue(child: Item) -> None:
-            child_item_node = ItemNode(item=child, parent=item_node)
-            queue.put(child_item_node)
-            item_node.children.add(child_item_node)
-            if child.track_overall:
-                display.overall_task.total_f += 1
+        def enqueue(*children: Item) -> None:
+            for child in children:
+                child_item_node = ItemNode(item=child, parent=item_node)
+                queue.put(child_item_node)
+                item_node.children.add(child_item_node)
+                if child.track_overall:
+                    display.overall_task.total_f += 1
 
         def set_worker_desc(description: str) -> None:
             worker_status_task.description = description
@@ -50,10 +50,9 @@ async def _worker(
 
 async def async_run_queue(
     *,
+    initial_items: Iterable[Item],
+    num_workers: int = 5,
     queue_type_name: QueueTypeName,
-    overall_progress_columns: Iterable[ProgressColumn] | None = None,
-    initial_items: Iterable[Item] | None = None,
-    num_workers: int = 10,
     graceful_ctrl_c: bool = True,
 ) -> None:
     """
@@ -62,7 +61,7 @@ async def async_run_queue(
     """
     queue = QUEUE_FACTORY[queue_type_name]()
 
-    display = Display.create(overall_progress_columns=overall_progress_columns or [])
+    display = Display.create()
     update_queue_size_progress = display.create_update_queue_size_progress_fn(queue)
 
     display.live.start()
@@ -93,28 +92,25 @@ async def async_run_queue(
 
 def run_queue(
     *,
-    num_workers: int = 10,
-    initial_items: Iterable[Item] | None = None,
+    initial_items: Iterable[Item],
+    num_workers: int = 5,
     queue_type_name: QueueTypeName = "queue",
-    overall_progress_columns: Iterable[ProgressColumn] | None = None,
     graceful_ctrl_c: bool = True,
 ) -> None:
     """
     Process all items in initial items (and any subsequent items they produce) and
     display a terminal visualization of it.
 
-    - `num_workers` specifies how many workers will be running concurrently
     - `initial_items` is an iterable that seeds the queue. This is where the top-level
       item should go that produces more items. (Note that any subsequent item can also
       produce items.)
+    - `num_workers` specifies how many workers will be running concurrently. Defaults
+      to 5.
     - `queue_type_name` can be either of:
-      - `queue` for first-in-first-out processing
+      - `queue` for first-in-first-out processing, the default
       - `stack` for last-in-first-out processing
       - `priority` for priority-based processing. In this case, item objects should be
         orderable. Processing will occur in *ascending* priority (smallest first).
-    - `overall_progress_columns` is an iterable of columns for the "Overall Progress"
-      panel. These must be `rich.progress.ProgressColumn` objects. See
-      https://rich.readthedocs.io/en/stable/progress.html#columns.
     - `graceful_ctrl_c` specifies whether pressing Ctrl-C will stop things abruptly
       (False) or wait until all the currently worked-on items are finished first (True,
       the default).
@@ -125,7 +121,6 @@ def run_queue(
             async_run_queue,
             queue_type_name=queue_type_name,
             initial_items=initial_items,
-            overall_progress_columns=overall_progress_columns,
             num_workers=num_workers,
             graceful_ctrl_c=graceful_ctrl_c,
         ),

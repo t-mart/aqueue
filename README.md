@@ -9,32 +9,36 @@ processing jobs, such as website scrapes.
 
 ```python
 import random
+from typing import ClassVar
 
 import trio
 
-from aqueue import EnqueueFn, Display, run_queue, Item
+from aqueue import EnqueueFn, Item, SetDescFn, run_queue
 
 
 class RootItem(Item):
-    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
-        num_children = 3
-        display.overall.total = num_children
-        display.worker.description = "Making child items"
+    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+        # display what we're doing in the worker status panel
+        set_desc("Making child items")
 
-        for _ in range(num_children):
+        for _ in range(3):
             # simulate doing work and creating more items
             await trio.sleep(random.random())
             enqueue(ChildItem())
 
+    async def after_children_processed(self) -> None:
+        print("All done!")
+
 
 class ChildItem(Item):
-    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
-        display.worker.description = "Doing work..."
+    # track these items on the Overall Progress panel
+    track_overall: ClassVar[bool] = True
+
+    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+        set_desc("Doing work...")
 
         # Simulate doing work
         await trio.sleep(random.random())
-
-        display.overall.completed += 1
 
 
 def main() -> None:
@@ -61,27 +65,32 @@ There's two things you need to do to use aqueue:
 Items are your units of work. They can represent whatever you'd like, such as parts of a website
 that you're trying to scrape: an item for the index page, for subpages, for images, etc.
 
-Each item should be an instance of a class that defines an async `progress` method. As arguments, it
-should accept two positional arguments:
+Each item should be an instance of a class. It's not required, but subclassing from `aqueue.Item`
+may let your editor give you better assistance.
 
-1. a `aqueue.EnqueueFn` that can be called to enqueue more work. That type is simply an alias for
-   `Callable[[Item], None]`.
-2. a `aqueue.Display` object that gives you control of the terminal display:
+For example:
 
 ```python
+from typing import ClassVar
 import aqueue
 
 class MyItem(aqueue.Item):
-    async def process(self, enqueue: aqueue.EnqueueFn, display: aqueue.Display) -> None:
+    async def process(self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn) -> None:
+        # display what we're doing in the worker status panel
+        set_desc('Processing MyItem')
+
         # make an HTTP request, parse it, etc
-        print('My item is processing!')
+        ...
 
         # when you discover more items you want to process, enqueue them:
         enqueue(AnotherItem())
 
 class AnotherItem(aqueue.Item):
-    async def process(self, enqueue: aqueue.EnqueueFn, display: aqueue.Display) -> None:
-        print('Another item is processing!')
+
+    track_overall: ClassVar[bool] = True
+
+    async def process(self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn) -> None:
+        set_desc('Processing AnotherItem')
 ```
 
 As a rule of thumb, you should make a new item class whenever you notice a one-to-many relationship.
@@ -95,6 +104,24 @@ TODO: consider [AnyIO](https://anyio.readthedocs.io/en/stable/) to avoid this pr
 Disclaimer: aqueue, or any asynchronous framework, is only going to be helpful if you're performing
 work is I/O-bound.
 
+#### `process` method, required
+
+An item class must define an async `process` method. As arguments, it should accept two positional arguments:
+
+1. a `aqueue.EnqueueFn` that can be called to enqueue more work. That type is simply an alias for
+   `Callable[[Item], None]`.
+2. a `aqueue.SetDescFn` that can be called to update this worker's status with a string description.
+
+#### `after_children_processed` method, optional
+
+You can implement an `after_children_processed` method. After this item's `process` and any
+(recursive) child's `process` are called, this method will be called.
+
+#### `track_overall` property, optional
+
+If set to True, when this item is enqueued, the Overall Progress total count increments. After its
+process method completed, the Overall Progress completed count increments
+
 ### Starting your Queue
 
 Then, start your queue with an initial item(s) to kick things off.
@@ -103,6 +130,8 @@ Then, start your queue with an initial item(s) to kick things off.
 aqueue.run_queue(
     initial_items=[MyItem()],
     num_workers=2,
+    queue_type_name="stack",
+    graceful_ctrl_c=True,
 )
 ```
 
@@ -132,33 +161,6 @@ default, aqueue will wait for the items currently being worked on to complete (w
 additional items), and _then_ stop. Put another way, the choice is between responsiveness and
 resource consistency.
 
-#### Setting the look of the panels
-
-Currently, only support for configuring the "Overall Progress" panel is supported. By default, the
-panel is very simple. If you want to customize it, provide an iterable of
-`rich.progress.ProgressColumn` objects to the `overall_progress_columns` argument. See
-<https://rich.readthedocs.io/en/stable/progress.html> for more information. (Note that rich provides
-all the nice terminal visualizations for aqueue!)
-
-### Updating the display
-
-As mentioned, each `process` method gets called with an `aqueue.Display` object. The display has two
-properties:
-
-- `worker`, which lets you update the description of the worker who's currently processing this
-  item. `display.worker.description` is the getter/setter for that.
-- `overall`, which lets you access things in "Overall Progress" terminal panel.
-  `display.overall.completed` is a getter/setter for the number of completed things,
-  `display.overall.total` for the total number of things (or None), and `display.overall.total_f`
-  for the total number of things or 0.
-
-These panels are just an informational display for humans. They don't know about the queue churning
-through items of work. Therefore, you must decide what things you want to keep track of, and often,
-you won't be able to determine the complete number of things at the beginning. You'll need to do
-some intermediate processing and increment it slowly as more work is discovered. For example, if you
-want to keep track of images found and downloaded, you often won't be able to do that until you are
-searching deeper into the website.
-
 ### Sharing state
 
 Often, its beneficial to share state between the items. Using the website scrape example again, you
@@ -182,7 +184,7 @@ automatically saves to a file each time you set a key in it.
 
 ### Other cool things
 
-This library is fully docstringed and type-hinted 🥳
+The API is fully docstringed and type-hinted 🥳
 
 ## Installation
 

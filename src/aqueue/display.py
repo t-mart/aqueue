@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
 
@@ -9,14 +9,15 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
+    MofNCompleteColumn,
     Progress,
-    ProgressColumn,
     SpinnerColumn,
     Task,
     TaskID,
     TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
+    TimeRemainingColumn,
 )
 from rich.table import Table
 
@@ -109,7 +110,7 @@ class Display:
     worker_status_progress: Progress  # not a LinkedTask because workers wont yet exist
 
     @classmethod
-    def create(cls, overall_progress_columns: Iterable[ProgressColumn]) -> Display:
+    def create(cls) -> Display:
         worker_status_progress = Progress(
             SpinnerColumn(),
             TextColumn("[blue]{task.fields[worker_id]}"),
@@ -125,15 +126,15 @@ class Display:
         )
         queue_stats_task = LinkedTask.create(progress=queue_stats_progress, total=0)
 
-        overall_progress_columns = overall_progress_columns or [
+        overall_progress = Progress(
             SpinnerColumn(),
             TextColumn("[blue]{task.description}"),
-            TaskProgressColumn(show_speed=True),
-            TextColumn("[green]{task.completed}"),
-            TimeElapsedColumn(),
+            MofNCompleteColumn(),
+            TaskProgressColumn(),
             BarColumn(),
-        ]
-        overall_progress = Progress(*overall_progress_columns)
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+        )
         overall_task = LinkedTask.create(progress=overall_progress, total=None)
 
         table = Table.grid()
