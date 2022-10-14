@@ -7,20 +7,34 @@ import trio
 from rich.progress import ProgressColumn
 
 from aqueue.display import Display, DisplaySetuper
-from aqueue.queue import QUEUE_FACTORY, Item, Queue, QueueTypeName
+from aqueue.queue import QUEUE_FACTORY, Item, ItemNode, Queue, QueueTypeName
 
 _WAIT_MESSAGE = "Waiting for work..."
 
 
 async def _worker(
-    queue: Queue[Item],
+    queue: Queue,
     progress_display: Display,
     update_queue_size_progress: Callable[..., None],
     graceful_ctrl_c: bool,
 ):
-    async for item in queue:
+    async for item_node in queue:
+
+        def enqueue(child: Item) -> None:
+            child_item_node = ItemNode(item=child, parent=item_node)
+            queue.put(child_item_node)
+            item_node.children.add(child_item_node)
+
         with trio.CancelScope(shield=graceful_ctrl_c):
-            await item.process(queue.put, progress_display)
+            await item_node.item.process(enqueue, progress_display)
+            item_node.done_processing = True
+
+            cur_node: ItemNode | None = item_node
+            while cur_node:
+                if cur_node.tree_done:
+                    await cur_node.item.after_children_processed()
+                cur_node = cur_node.parent
+
         progress_display.worker.description = _WAIT_MESSAGE
         update_queue_size_progress()
         queue.task_done()
@@ -51,7 +65,7 @@ async def async_run_queue(
 
     async with trio.open_nursery() as nursery:
         for item in initial_items or []:
-            queue.put(item)
+            queue.put(ItemNode(item=item, parent=None))
 
         for i in range(num_workers):
             worker_status_progress_task_id = display.worker_status_progress.add_task(

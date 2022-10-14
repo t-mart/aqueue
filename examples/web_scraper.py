@@ -43,6 +43,9 @@ class IndexItem(Item):
 
         print("[yellow]Done scraping index")
 
+    async def after_children_processed(self) -> None:
+        print("all done")
+
 
 @frozen(kw_only=True)
 class PageItem(Item):
@@ -94,7 +97,7 @@ def main() -> None:
             TimeElapsedColumn(),
             TimeRemainingColumn(),
         ],
-        restrict_ctrl_c_to_checkpoints=True,
+        graceful_ctrl_c=True,
     )
 
 

@@ -4,7 +4,7 @@ import heapq
 from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import AsyncIterator, Callable
-from typing import Generic, Literal, Type, TypeVar
+from typing import Literal, Type
 
 import trio
 from attrs import define, field
@@ -22,34 +22,61 @@ class Item(ABC):
         must be compatible with trio.
         """
 
+    async def after_children_processed(self) -> None:
+        """
+        This method is called after all child items enqueued by this item are processed.
+        Implementing this method is optional.
+        """
+
 
 # type for the enqueue function
 EnqueueFn = Callable[[Item], None]
 
 
-ItemType = TypeVar("ItemType", bound=Item)
+@define(kw_only=True, hash=True)
+class ItemNode:
+    """
+    This class lets us treat items like a tree.
+    """
+
+    # the item from the user
+    item: Item
+
+    # the parent to this item
+    parent: ItemNode | None
+
+    # any children this item created
+    children: set[ItemNode] = field(factory=set, hash=False)
+
+    # set to True only after the process method is complete. this is needed for because
+    # we're in a concurrent environment and child may finish before their parent.
+    done_processing: bool = field(default=False, hash=False)
+
+    @property
+    def tree_done(self) -> bool:
+        return self.done_processing and all(child.tree_done for child in self.children)
 
 
 @define
-class Queue(Generic[ItemType]):
+class Queue:
     """
     An unbounded FIFO queue
     """
 
-    _container: deque[ItemType] = field(init=False, factory=deque)
+    _container: deque[ItemNode] = field(init=False, factory=deque)
     _unfinished_task_count: int = field(init=False, default=0)
 
-    def _put(self, item: ItemType) -> None:
-        self._container.appendleft(item)
+    def _put(self, item_node: ItemNode) -> None:
+        self._container.appendleft(item_node)
 
-    def _get(self) -> ItemType:
+    def _get(self) -> ItemNode:
         return self._container.pop()
 
-    def put(self, item: ItemType) -> None:
-        self._put(item)
+    def put(self, item_node: ItemNode) -> None:
+        self._put(item_node)
         self._unfinished_task_count += 1
 
-    async def get(self) -> ItemType:
+    async def get(self) -> ItemNode:
         while self.empty():
             await trio.sleep(0)
         return self._get()
@@ -67,18 +94,18 @@ class Queue(Generic[ItemType]):
         while self._unfinished_task_count != 0:
             await trio.sleep(0)
 
-    async def __aiter__(self) -> AsyncIterator[ItemType]:
+    async def __aiter__(self) -> AsyncIterator[ItemNode]:
         # gather 2 things: a get and a join
         not_changed = object()
-        item: object | ItemType = not_changed
+        item_node: object | ItemNode = not_changed
 
         async def join_and_cancel(cancel_scope: trio.CancelScope) -> None:
             await self.join()
             cancel_scope.cancel()
 
         async def get_and_cancel(cancel_scope: trio.CancelScope) -> None:
-            nonlocal item
-            item = await self.get()
+            nonlocal item_node
+            item_node = await self.get()
             cancel_scope.cancel()
 
         while True:
@@ -86,36 +113,36 @@ class Queue(Generic[ItemType]):
                 nursery.start_soon(join_and_cancel, nursery.cancel_scope)
                 nursery.start_soon(get_and_cancel, nursery.cancel_scope)
 
-            if item is not_changed:
+            if item_node is not_changed:
                 return
             else:
-                yield item  # type: ignore
+                yield item_node  # type: ignore
 
-            item = not_changed  # reset for next iter
+            item_node = not_changed  # reset for next iter
 
 
 @define
-class Stack(Queue, Generic[ItemType]):
+class Stack(Queue):
     """
     An unbounded LIFO queue (or stack)
     """
 
-    def _put(self, item: ItemType) -> None:
-        self._container.append(item)
+    def _put(self, item_node: ItemNode) -> None:
+        self._container.append(item_node)
 
 
 @define
-class PriorityQueue(Queue, Generic[ItemType]):
+class PriorityQueue(Queue):
     """
     An unbounded priority queue. Items will need to set their own ordering.
     """
 
-    _container: deque[ItemType] = field(init=False, factory=list)
+    _container: deque[ItemNode] = field(init=False, factory=list)
 
-    def _put(self, item: ItemType) -> None:
-        heapq.heappush(self._container, item)  # type: ignore
+    def _put(self, item_node: ItemNode) -> None:
+        heapq.heappush(self._container, item_node)  # type: ignore
 
-    def _get(self) -> ItemType:
+    def _get(self) -> ItemNode:
         return heapq.heappop(self._container)  # type: ignore
 
 
