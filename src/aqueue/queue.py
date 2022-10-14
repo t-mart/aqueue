@@ -15,7 +15,9 @@ from aqueue.display import SetDescFn
 class Item(ABC):
     """An abstract class for items."""
 
-    # if True, when this item is
+    # if True, when this item is enqueued, the overall progress *total* will increment,
+    # and, when this item is done processing, the overall progress *completed* will
+    # increment
     track_overall: ClassVar[bool] = False
 
     @abstractmethod
