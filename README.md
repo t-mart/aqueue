@@ -53,6 +53,12 @@ if __name__ == "__main__":
 
 ```
 
+## Installation
+
+```shell
+pip install aqueue
+```
+
 ## Usage Notes
 
 There's two things you need to do to use aqueue:
@@ -185,9 +191,3 @@ automatically saves to a file each time you set a key in it.
 ### Other cool things
 
 The API is fully docstringed and type-hinted 🥳
-
-## Installation
-
-```shell
-pip install "git+https://github.com/t-mart/aqueue"
-```
