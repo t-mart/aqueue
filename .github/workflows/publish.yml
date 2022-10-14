@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  check:
-    name: Check
+  publish:
+    name: Publish
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
