@@ -17,13 +17,13 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from aqueue import Display, EnqueueFn, Item, run_queue
+from aqueue import EnqueueFn, Item, SetDescFn, run_queue
 
 NUM_PAGES = 5
 NUM_IMAGES = 7
 
 # keep a list of previously downloaded things, in case of restarts
-visited = {"/images/1/2"}
+visited = {"http://example.com/images/1/2"}
 
 
 @frozen(kw_only=True)
@@ -32,8 +32,8 @@ class IndexItem(Item):
 
     URL: ClassVar[str] = "http://example.com/images"
 
-    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
-        display.worker.description = f"[blue]Scraping index at {self.URL}"
+    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+        set_desc(f"[blue]Scraping index at {self.URL}")
 
         # simulate page download and parse
         await trio.sleep(random.random())
@@ -53,9 +53,8 @@ class PageItem(Item):
 
     url: str
 
-    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
-        display.worker.description = f"[cyan]scraping page at {self.url}"
-        display.overall.total_f += NUM_IMAGES
+    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+        set_desc(f"[cyan]scraping page at {self.url}")
 
         for image_number in range(NUM_IMAGES):
             # simulate page download and parse
@@ -69,8 +68,10 @@ class ImageItem(Item):
 
     url: str
 
-    async def process(self, enqueue: EnqueueFn, display: Display) -> None:
-        display.worker.description = f"[green]downloading image at {self.url}"
+    track_overall: ClassVar[bool] = True
+
+    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+        set_desc(f"[green]downloading image at {self.url}")
 
         if self.url not in visited:
             # simulate download
@@ -79,8 +80,6 @@ class ImageItem(Item):
         else:
             # simulate skipping download because it's already been downloaded
             print(f"[violet]Skipping image {self.url}")
-
-        display.overall.completed += 1
 
 
 def main() -> None:

@@ -4,28 +4,38 @@ import heapq
 from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import AsyncIterator, Callable
-from typing import Literal, Type
+from typing import ClassVar, Literal, Type
 
 import trio
 from attrs import define, field
 
-from aqueue.display import Display
+from aqueue.display import SetDescFn
 
 
 class Item(ABC):
     """An abstract class for items."""
 
+    # if True, when this item is
+    track_overall: ClassVar[bool] = False
+
     @abstractmethod
-    async def process(self, enqueue: EnqueueFn, progress_display: Display) -> None:
+    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
         """
-        Do this items work. If any async primitives are to be used in this method, they
-        must be compatible with trio.
+        Do this items work.
+
+        Implementers should call the first arugment with any additional items to enqueue
+        them for later processing. To provide good visual feedback, the second argument
+        should be called with a description string.
+
+        If any async primitives are to be used in this method, they must be compatible
+        with trio.
         """
 
     async def after_children_processed(self) -> None:
         """
         This method is called after all child items enqueued by this item are processed.
-        Implementing this method is optional.
+        Implementing this method is optional. Again, only trio-compatible primitives are
+        allowed.
         """
 
 

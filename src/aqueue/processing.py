@@ -6,15 +6,14 @@ from functools import partial
 import trio
 from rich.progress import ProgressColumn
 
-from aqueue.display import Display, DisplaySetuper
+from aqueue.display import WAIT_MESSAGE, Display, LinkedTask
 from aqueue.queue import QUEUE_FACTORY, Item, ItemNode, Queue, QueueTypeName
-
-_WAIT_MESSAGE = "Waiting for work..."
 
 
 async def _worker(
     queue: Queue,
-    progress_display: Display,
+    display: Display,
+    worker_status_task: LinkedTask,
     update_queue_size_progress: Callable[..., None],
     graceful_ctrl_c: bool,
 ):
@@ -24,9 +23,14 @@ async def _worker(
             child_item_node = ItemNode(item=child, parent=item_node)
             queue.put(child_item_node)
             item_node.children.add(child_item_node)
+            if child.track_overall:
+                display.overall_task.total_f += 1
+
+        def set_worker_desc(description: str) -> None:
+            worker_status_task.description = description
 
         with trio.CancelScope(shield=graceful_ctrl_c):
-            await item_node.item.process(enqueue, progress_display)
+            await item_node.item.process(enqueue, set_worker_desc)
             item_node.done_processing = True
 
             cur_node: ItemNode | None = item_node
@@ -35,11 +39,13 @@ async def _worker(
                     await cur_node.item.after_children_processed()
                 cur_node = cur_node.parent
 
-        progress_display.worker.description = _WAIT_MESSAGE
+        if item_node.item.track_overall:
+            display.overall_task.completed += 1
+        worker_status_task.description = WAIT_MESSAGE
         update_queue_size_progress()
         queue.task_done()
 
-    progress_display.worker.description = "Done"
+    worker_status_task.description = "Done"
 
 
 async def async_run_queue(
@@ -56,9 +62,7 @@ async def async_run_queue(
     """
     queue = QUEUE_FACTORY[queue_type_name]()
 
-    display = DisplaySetuper.create(
-        overall_progress_columns=overall_progress_columns or []
-    )
+    display = Display.create(overall_progress_columns=overall_progress_columns or [])
     update_queue_size_progress = display.create_update_queue_size_progress_fn(queue)
 
     display.live.start()
@@ -66,24 +70,22 @@ async def async_run_queue(
     async with trio.open_nursery() as nursery:
         for item in initial_items or []:
             queue.put(ItemNode(item=item, parent=None))
+            if item.track_overall:
+                display.overall_task.total_f += 1
 
-        for i in range(num_workers):
-            worker_status_progress_task_id = display.worker_status_progress.add_task(
-                _WAIT_MESSAGE, worker_id=f"#{i}"
-            )
-            progress_display = display.create_progress_display(
-                worker_status_progress_task_id
-            )
+        for worker_id in range(num_workers):
+            worker_status_task = display.create_worker_status_task(worker_id=worker_id)
 
             nursery.start_soon(
                 partial(
                     _worker,
                     queue=queue,
-                    progress_display=progress_display,
+                    display=display,
+                    worker_status_task=worker_status_task,
                     update_queue_size_progress=update_queue_size_progress,
                     graceful_ctrl_c=graceful_ctrl_c,
                 ),
-                name=f"worker #{i}",
+                name=f"worker #{worker_id}",  # for debugging/introspection
             )
 
     display.live.stop()
