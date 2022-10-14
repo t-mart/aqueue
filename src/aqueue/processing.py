@@ -35,8 +35,9 @@ async def _worker(
 
             cur_node: ItemNode | None = item_node
             while cur_node:
-                if cur_node.tree_done:
-                    await cur_node.item.after_children_processed()
+                if not cur_node.tree_done:
+                    break
+                await cur_node.item.after_children_processed()
                 cur_node = cur_node.parent
 
         if item_node.item.track_overall:
