@@ -6,7 +6,7 @@
 
 ``aqueue`` is an async queue with live progress display.
 
-.. image:: _static/demo.gif
+.. image:: docs/_static/demo.gif
   :alt: Demonstration of aqueue
 
 .. note::
