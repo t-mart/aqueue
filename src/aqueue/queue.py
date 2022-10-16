@@ -14,7 +14,10 @@ from aqueue.display import SetDescFn
 
 @define
 class Item(ABC):
-    """An abstract class for items."""
+    """
+    The abstract class for items. Each subclass should represent one chunk of work in
+    your problem domain.
+    """
 
     track_overall: ClassVar[bool] = False
     """
@@ -60,9 +63,6 @@ class Item(ABC):
         Implementers should call the first arugment with any additional items to enqueue
         them for later processing. To provide good visual feedback, the second argument
         should be called with a description string.
-
-        If any async primitives are to be used in this method, they must be compatible
-        with trio.
         """
 
     async def _process(self, enqueue: EnqueueFn, set_worker_desc: SetDescFn) -> None:
@@ -75,7 +75,7 @@ class Item(ABC):
         Implementing this method is optional. Again, only trio-compatible primitives are
         allowed.
 
-        Overriding `Item`'s implementation for this method (a no-op) is optional.
+        Overriding ``Item``'s implementation for this method (a no-op) is optional.
         """
 
     @property

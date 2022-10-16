@@ -102,7 +102,7 @@ class LinkedTask:
 
 @frozen(kw_only=True)
 class Display:
-    """Internal display object that organizes away the complex setup of it all"""
+    """Internal display object that organizes away the complex setup of it all."""
 
     live: Live
     overall_task: LinkedTask
@@ -119,7 +119,7 @@ class Display:
 
         queue_stats_progress = Progress(
             SpinnerColumn(),
-            TextColumn("[blue]Stack Size"),
+            TextColumn("[blue]Queue Size"),
             TextColumn("[white]{task.completed} items"),
             BarColumn(complete_style="cyan", finished_style="cyan"),
             TextColumn("[white]{task.total} items max"),
