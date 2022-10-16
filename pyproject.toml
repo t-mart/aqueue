@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aqueue"
-version = "0.3.2"
+version = "0.4.0"
 description = "An async queue with live progress display"
 authors = ["Tim Martin <tim@timmart.in>"]
 readme = "README.md"
