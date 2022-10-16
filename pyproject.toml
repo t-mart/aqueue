@@ -10,6 +10,7 @@ python = "^3.10"
 attrs = "^22.1.0"
 rich = "^12.6.0"
 trio = "^0.22.0"
+sortedcontainers = "^2.4.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.8.0"

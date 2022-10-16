@@ -123,6 +123,11 @@ An item class must define an async `process` method. As arguments, it should acc
 You can implement an `after_children_processed` method. After this item's `process` and any
 (recursive) child's `process` are called, this method will be called.
 
+#### `priority` property, optional
+
+An int value that acts as the key when aqueue is running with `queue_type_name="priority"`. Smaller
+numbers have higher priority.
+
 #### `track_overall` property, optional
 
 If set to True, when this item is enqueued, the Overall Progress total count increments. After its
@@ -160,7 +165,7 @@ argument.
 
 #### Ctrl-C
 
-If you decide you want to stop your queue processing, press Ctrl-C.
+To stop your queue processing, press Ctrl-C.
 
 If you've set the `graceful_ctrl_c` to False, this will stop the program immediately. If True, the
 default, aqueue will wait for the items currently being worked on to complete (without taking any

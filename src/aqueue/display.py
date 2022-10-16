@@ -155,7 +155,7 @@ class Display:
         # a perhaps-unintended use of a rich progress bar, which will move up/down
         # with the size of the queue and keep track of its maximum.
         def update_queue_size_progress() -> None:
-            new_size = queue.size()
+            new_size = len(queue)
             old_max = self.queue_stats_task.task.total or 0
 
             self.queue_stats_task.update(

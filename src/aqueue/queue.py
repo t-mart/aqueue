@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import heapq
 from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import AsyncIterator, Callable
-from typing import ClassVar, Literal, Type
+from typing import ClassVar, Generic, Literal, Type, TypeVar
 
 import trio
 from attrs import define, field
+from sortedcontainers import SortedKeyList
 
 from aqueue.display import SetDescFn
 
@@ -19,6 +19,10 @@ class Item(ABC):
     # and, when this item is done processing, the overall progress *completed* will
     # increment
     track_overall: ClassVar[bool] = False
+
+    # in priority queues, this number determines the priority of this item. smaller
+    # numbers have higher priority.
+    priority: ClassVar[int] = 0
 
     @abstractmethod
     async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
@@ -58,31 +62,36 @@ class ItemNode:
     parent: ItemNode | None
 
     # any children this item created
-    children: set[ItemNode] = field(factory=set, hash=False)
+    children: set[ItemNode] = field(factory=set, eq=False)
 
     # set to True only after the process method is complete. this is needed for because
     # we're in a concurrent environment and child may finish before their parent.
-    done_processing: bool = field(default=False, hash=False)
+    done_processing: bool = field(default=False, eq=False)
 
     @property
     def tree_done(self) -> bool:
         return self.done_processing and all(child.tree_done for child in self.children)
 
 
-@define
-class Queue:
-    """
-    An unbounded FIFO queue
-    """
+QueueContainer = TypeVar("QueueContainer")
 
-    _container: deque[ItemNode] = field(init=False, factory=deque)
+
+@define
+class QueueABC(ABC, Generic[QueueContainer]):
+
     _unfinished_task_count: int = field(init=False, default=0)
 
+    @abstractmethod
     def _put(self, item_node: ItemNode) -> None:
-        self._container.appendleft(item_node)
+        ...
 
+    @abstractmethod
     def _get(self) -> ItemNode:
-        return self._container.pop()
+        ...
+
+    @abstractmethod
+    def __len__(self) -> int:
+        ...
 
     def put(self, item_node: ItemNode) -> None:
         self._put(item_node)
@@ -94,10 +103,7 @@ class Queue:
         return self._get()
 
     def empty(self) -> bool:
-        return not self._container
-
-    def size(self) -> int:
-        return len(self._container)
+        return len(self) == 0
 
     def task_done(self) -> None:
         self._unfinished_task_count -= 1
@@ -134,34 +140,71 @@ class Queue:
 
 
 @define
-class Stack(Queue):
+class Queue(QueueABC):
+    """
+    An unbounded FIFO queue
+    """
+
+    _container: deque[ItemNode] = field(factory=deque)
+
+    def _put(self, item_node: ItemNode) -> None:
+        self._container.appendleft(item_node)
+
+    def _get(self) -> ItemNode:
+        return self._container.pop()
+
+    def __len__(self) -> int:
+        return len(self._container)
+
+
+@define
+class Stack(QueueABC):
     """
     An unbounded LIFO queue (or stack)
     """
 
+    _container: list[ItemNode] = field(factory=list)
+
     def _put(self, item_node: ItemNode) -> None:
         self._container.append(item_node)
 
+    def _get(self) -> ItemNode:
+        return self._container.pop()
+
+    def __len__(self) -> int:
+        return len(self._container)
+
+
+def _sortedkeylist_by_item() -> SortedKeyList:
+    def key(item_node: ItemNode) -> int:
+        return item_node.item.priority
+
+    return SortedKeyList(key=key)
+
 
 @define
-class PriorityQueue(Queue):
+class PriorityQueue(QueueABC):
     """
-    An unbounded priority queue. Items will need to set their own ordering.
+    An unbounded priority queue. Items will need to set `priority` attributes
+    appropriately.
     """
 
-    _container: deque[ItemNode] = field(init=False, factory=list)
+    _container: SortedKeyList[ItemNode] = field(factory=_sortedkeylist_by_item)
 
     def _put(self, item_node: ItemNode) -> None:
-        heapq.heappush(self._container, item_node)  # type: ignore
+        self._container.add(item_node)
 
     def _get(self) -> ItemNode:
-        return heapq.heappop(self._container)  # type: ignore
+        return self._container.pop(0)
+
+    def __len__(self) -> int:
+        return len(self._container)
 
 
 # names a type of queue for the API
 QueueTypeName = Literal["queue", "stack", "priority"]
 
-QUEUE_FACTORY: dict[QueueTypeName, Type[Queue]] = {
+QUEUE_FACTORY: dict[QueueTypeName, Type[QueueABC]] = {
     "queue": Queue,
     "stack": Stack,
     "priority": PriorityQueue,
