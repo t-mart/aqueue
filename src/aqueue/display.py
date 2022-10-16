@@ -23,7 +23,7 @@ from rich.table import Table
 
 if TYPE_CHECKING:
     # avoid circular reference when just trying to type hint
-    from aqueue.queue import Queue
+    from aqueue.queue import QueueABC
 
 WAIT_MESSAGE = "Waiting for work..."
 
@@ -151,7 +151,9 @@ class Display:
             queue_stats_task=queue_stats_task,
         )
 
-    def create_update_queue_size_progress_fn(self, queue: Queue) -> Callable[..., None]:
+    def create_update_queue_size_progress_fn(
+        self, queue: QueueABC
+    ) -> Callable[..., None]:
         # a perhaps-unintended use of a rich progress bar, which will move up/down
         # with the size of the queue and keep track of its maximum.
         def update_queue_size_progress() -> None:

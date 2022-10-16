@@ -5,7 +5,7 @@ import random
 from typing import ClassVar
 
 import trio
-from attrs import frozen
+from attrs import define
 from rich import print
 
 from aqueue import EnqueueFn, Item, SetDescFn, run_queue
@@ -17,7 +17,7 @@ NUM_IMAGES = 7
 visited = {"http://example.com/images/1/2"}
 
 
-@frozen(kw_only=True)
+@define(kw_only=True)
 class IndexItem(Item):
     """Represents the root level of the scrape"""
 
@@ -38,7 +38,7 @@ class IndexItem(Item):
         print("All done!")
 
 
-@frozen(kw_only=True)
+@define(kw_only=True)
 class PageItem(Item):
     """Represents a page on a website to scrape"""
 
@@ -53,7 +53,7 @@ class PageItem(Item):
             enqueue(ImageItem(url=f"{self.url}/{image_number}"))
 
 
-@frozen(kw_only=True)
+@define(kw_only=True)
 class ImageItem(Item):
     """Represents a image on a website to scrape"""
 
@@ -62,7 +62,7 @@ class ImageItem(Item):
     track_overall: ClassVar[bool] = True
 
     async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
-        set_desc(f"[green]downloading image at {self.url}")
+        set_desc(f"[green]downloading image at {self.url} from {self.parent.url}")
 
         if self.url not in visited:
             # simulate download

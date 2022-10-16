@@ -6,7 +6,7 @@ from functools import partial
 import trio
 
 from aqueue.display import WAIT_MESSAGE, Display, LinkedTask
-from aqueue.queue import QUEUE_FACTORY, Item, ItemNode, Queue, QueueTypeName
+from aqueue.queue import QUEUE_FACTORY, Item, Queue, QueueTypeName
 
 
 async def _worker(
@@ -16,13 +16,13 @@ async def _worker(
     update_queue_size_progress: Callable[..., None],
     graceful_ctrl_c: bool,
 ):
-    async for item_node in queue:
+    async for item in queue:
 
         def enqueue(*children: Item) -> None:
             for child in children:
-                child_item_node = ItemNode(item=child, parent=item_node)
-                queue.put(child_item_node)
-                item_node.children.add(child_item_node)
+                child.parent = item
+                queue.put(child)
+                item._children.append(child)
                 if child.track_overall:
                     display.overall_task.total_f += 1
 
@@ -30,17 +30,16 @@ async def _worker(
             worker_status_task.description = description
 
         with trio.CancelScope(shield=graceful_ctrl_c):
-            await item_node.item.process(enqueue, set_worker_desc)
-            item_node.done_processing = True
+            await item._process(enqueue, set_worker_desc)
 
-            cur_node: ItemNode | None = item_node
-            while cur_node:
-                if not cur_node.tree_done:
+            cur_item: Item | None = item
+            while cur_item:
+                if not cur_item._tree_done:
                     break
-                await cur_node.item.after_children_processed()
-                cur_node = cur_node.parent
+                await cur_item.after_children_processed()
+                cur_item = cur_item.parent
 
-        if item_node.item.track_overall:
+        if item.track_overall:
             display.overall_task.completed += 1
         worker_status_task.description = WAIT_MESSAGE
         update_queue_size_progress()
@@ -69,7 +68,7 @@ async def async_run_queue(
 
     async with trio.open_nursery() as nursery:
         for item in initial_items or []:
-            queue.put(ItemNode(item=item, parent=None))
+            queue.put(item)
             if item.track_overall:
                 display.overall_task.total_f += 1
 

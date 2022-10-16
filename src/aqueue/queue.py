@@ -12,17 +12,45 @@ from sortedcontainers import SortedKeyList
 from aqueue.display import SetDescFn
 
 
+@define
 class Item(ABC):
     """An abstract class for items."""
 
-    # if True, when this item is enqueued, the overall progress *total* will increment,
-    # and, when this item is done processing, the overall progress *completed* will
-    # increment
     track_overall: ClassVar[bool] = False
+    """
+    If True, when this item is enqueued, the overall progress *total* will increment,
+    and, when this item is done processing, the overall progress *completed* will
+    increment.
+    """
 
-    # in priority queues, this number determines the priority of this item. smaller
-    # numbers have higher priority.
     priority: ClassVar[int] = 0
+    """
+    In priority queues, this number determines the priority of this item. Smaller
+    numbers have higher priority.
+    """
+
+    parent: Item | None = field(default=None)
+    """
+    The Item that enqueued this item, or None if it was an initial item.
+
+    This attribute is only valid inside `process` or after it has been called. This
+    attribute should not be overwritten or mutated.
+    """
+
+    _children: list[Item] = field(factory=list)
+    """
+    An internal list of Item objects that this item enqueued when it was processed.
+
+    This is needed to keep track of children, which dictates when
+    `after_children_processed` should be called.
+    """
+
+    _done_processing: bool = field(default=False)
+    """
+    An internal marker that is set to True when this method has completed processing.
+    This is needed because, to properly trigger the `after_children_processed` callback,
+    aqueue needs to know if an Item might still be processing.
+    """
 
     @abstractmethod
     async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
@@ -37,40 +65,29 @@ class Item(ABC):
         with trio.
         """
 
+    async def _process(self, enqueue: EnqueueFn, set_worker_desc: SetDescFn) -> None:
+        await self.process(enqueue, set_worker_desc)
+        self._done_processing = True
+
     async def after_children_processed(self) -> None:
         """
         This method is called after all child items enqueued by this item are processed.
         Implementing this method is optional. Again, only trio-compatible primitives are
         allowed.
+
+        Overriding `Item`'s implementation for this method (a no-op) is optional.
         """
+
+    @property
+    def _tree_done(self) -> bool:
+        """Return True if this Item and all its children have been processed."""
+        return self._done_processing and all(
+            child._tree_done for child in self._children
+        )
 
 
 # type for the enqueue function
 EnqueueFn = Callable[[Item], None]
-
-
-@define(kw_only=True, hash=True)
-class ItemNode:
-    """
-    This class lets us treat items like a tree.
-    """
-
-    # the item from the user
-    item: Item
-
-    # the parent to this item
-    parent: ItemNode | None
-
-    # any children this item created
-    children: set[ItemNode] = field(factory=set, eq=False)
-
-    # set to True only after the process method is complete. this is needed for because
-    # we're in a concurrent environment and child may finish before their parent.
-    done_processing: bool = field(default=False, eq=False)
-
-    @property
-    def tree_done(self) -> bool:
-        return self.done_processing and all(child.tree_done for child in self.children)
 
 
 QueueContainer = TypeVar("QueueContainer")
@@ -82,22 +99,22 @@ class QueueABC(ABC, Generic[QueueContainer]):
     _unfinished_task_count: int = field(init=False, default=0)
 
     @abstractmethod
-    def _put(self, item_node: ItemNode) -> None:
+    def _put(self, item: Item) -> None:
         ...
 
     @abstractmethod
-    def _get(self) -> ItemNode:
+    def _get(self) -> Item:
         ...
 
     @abstractmethod
     def __len__(self) -> int:
         ...
 
-    def put(self, item_node: ItemNode) -> None:
-        self._put(item_node)
+    def put(self, item: Item) -> None:
+        self._put(item)
         self._unfinished_task_count += 1
 
-    async def get(self) -> ItemNode:
+    async def get(self) -> Item:
         while self.empty():
             await trio.sleep(0)
         return self._get()
@@ -112,18 +129,18 @@ class QueueABC(ABC, Generic[QueueContainer]):
         while self._unfinished_task_count != 0:
             await trio.sleep(0)
 
-    async def __aiter__(self) -> AsyncIterator[ItemNode]:
+    async def __aiter__(self) -> AsyncIterator[Item]:
         # gather 2 things: a get and a join
         not_changed = object()
-        item_node: object | ItemNode = not_changed
+        item: object | Item = not_changed
 
         async def join_and_cancel(cancel_scope: trio.CancelScope) -> None:
             await self.join()
             cancel_scope.cancel()
 
         async def get_and_cancel(cancel_scope: trio.CancelScope) -> None:
-            nonlocal item_node
-            item_node = await self.get()
+            nonlocal item
+            item = await self.get()
             cancel_scope.cancel()
 
         while True:
@@ -131,12 +148,12 @@ class QueueABC(ABC, Generic[QueueContainer]):
                 nursery.start_soon(join_and_cancel, nursery.cancel_scope)
                 nursery.start_soon(get_and_cancel, nursery.cancel_scope)
 
-            if item_node is not_changed:
+            if item is not_changed:
                 return
             else:
-                yield item_node  # type: ignore
+                yield item  # type: ignore
 
-            item_node = not_changed  # reset for next iter
+            item = not_changed  # reset for next iter
 
 
 @define
@@ -145,12 +162,12 @@ class Queue(QueueABC):
     An unbounded FIFO queue
     """
 
-    _container: deque[ItemNode] = field(factory=deque)
+    _container: deque[Item] = field(factory=deque)
 
-    def _put(self, item_node: ItemNode) -> None:
-        self._container.appendleft(item_node)
+    def _put(self, item: Item) -> None:
+        self._container.appendleft(item)
 
-    def _get(self) -> ItemNode:
+    def _get(self) -> Item:
         return self._container.pop()
 
     def __len__(self) -> int:
@@ -163,12 +180,12 @@ class Stack(QueueABC):
     An unbounded LIFO queue (or stack)
     """
 
-    _container: list[ItemNode] = field(factory=list)
+    _container: list[Item] = field(factory=list)
 
-    def _put(self, item_node: ItemNode) -> None:
-        self._container.append(item_node)
+    def _put(self, item: Item) -> None:
+        self._container.append(item)
 
-    def _get(self) -> ItemNode:
+    def _get(self) -> Item:
         return self._container.pop()
 
     def __len__(self) -> int:
@@ -176,8 +193,8 @@ class Stack(QueueABC):
 
 
 def _sortedkeylist_by_item() -> SortedKeyList:
-    def key(item_node: ItemNode) -> int:
-        return item_node.item.priority
+    def key(item: Item) -> int:
+        return item.priority
 
     return SortedKeyList(key=key)
 
@@ -189,12 +206,12 @@ class PriorityQueue(QueueABC):
     appropriately.
     """
 
-    _container: SortedKeyList[ItemNode] = field(factory=_sortedkeylist_by_item)
+    _container: SortedKeyList[Item] = field(factory=_sortedkeylist_by_item)
 
-    def _put(self, item_node: ItemNode) -> None:
-        self._container.add(item_node)
+    def _put(self, item: Item) -> None:
+        self._container.add(item)
 
-    def _get(self) -> ItemNode:
+    def _get(self) -> Item:
         return self._container.pop(0)
 
     def __len__(self) -> int:

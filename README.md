@@ -71,8 +71,7 @@ There's two things you need to do to use aqueue:
 Items are your units of work. They can represent whatever you'd like, such as parts of a website
 that you're trying to scrape: an item for the index page, for subpages, for images, etc.
 
-Each item should be an instance of a class. It's not required, but subclassing from `aqueue.Item`
-may let your editor give you better assistance.
+Each item must be an instance of a subclass of `aqueue.Item`.
 
 For example:
 
@@ -112,7 +111,8 @@ work is I/O-bound.
 
 #### `process` method, required
 
-An item class must define an async `process` method. As arguments, it should accept two positional arguments:
+An item class must define an async `process` method. As arguments, it should accept two positional
+arguments:
 
 1. a `aqueue.EnqueueFn` that can be called to enqueue more work. That type is simply an alias for
    `Callable[[Item], None]`.
