@@ -45,20 +45,12 @@ Example
 
 If you had a hierarchy of items like this...
 
-.. mermaid::
-
-   flowchart
-      root[Root Item]
-      root-->childa[Child Item]
-      root-->childb[Child Item]
-      root-->childc[Child Item]
-      root-->childd[Child Item]
-      root-->childe[Child Item]
-
+.. image:: docs/_static/simple-diagram.png
+  :alt: Simple item hierarchy with one root item and many children items stemming from it.
 
 Then, you might process it with ``aqueue`` like this...
 
-.. include:: /examples/simple.py
+.. include:: examples/simple.py
    :code: python
 
 Documentation Page

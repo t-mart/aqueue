@@ -7,7 +7,9 @@ Example
 
 If you had a hierarchy of items like this...
 
-.. mermaid:: _static/simple.mmd
+
+.. image:: _static/simple-diagram.png
+  :alt: Simple item hierarchy with one root item and many children items stemming from it.
 
 Then, you might process it with ``aqueue`` like this...
 
