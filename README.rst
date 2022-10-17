@@ -49,4 +49,4 @@ Example
 Documentation Page
 ==================
 
-Visit the full documentation site at `<aqueue.readthedocs.io>`_
+Visit the full documentation site at `<https://t-mart.github.io/aqueue/>`_
