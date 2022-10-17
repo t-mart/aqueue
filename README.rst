@@ -21,7 +21,7 @@ on, until all items are completed. A typical use case would be to scrape a websi
 Installation
 ============
 
-``aqueue`` is a Python package `hosted on PyPI <https://pypi.org/project/attrs/>`_. The recommended
+``aqueue`` is a Python package `hosted on PyPI <https://pypi.org/project/aqueue/>`_. The recommended
 installation method is `pip <https://pip.pypa.io/en/stable/>`_-installing into a virtual
 environment:
 
