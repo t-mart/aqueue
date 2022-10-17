@@ -50,9 +50,6 @@ If you had a hierarchy of items like this...
 
 Then, you might process it with ``aqueue`` like this...
 
-.. include:: examples/simple.py
-   :code: python
-
 .. code-block:: python
 
    import aqueue
