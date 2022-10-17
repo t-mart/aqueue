@@ -3,7 +3,20 @@
    :end-before: teaser-end
 
 
+Getting Started
+===============
 
+There's two things you need to do to use aqueue:
+
+1. Implement your `Item <#items>`_ subclasses.
+2. `Start your queue <#starting-your-queue>`_ with one of those
+   items.
+
+Example
+=======
+
+.. include:: ../examples/simple.py
+   :code: python
 
 Items
 =====

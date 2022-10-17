@@ -29,22 +29,22 @@ environment:
 
    pip install aqueue
 
+.. teaser-end
 
 Getting Started
 ===============
 
 There's two things you need to do to use aqueue:
 
-1. Implement your `Item <#items>`_ subclasses.
-2. `Start your queue <#starting-your-queue>`_ with one of those items.
+1. Implement your `Item <https://t-mart.github.io/aqueue/#items>`_ subclasses.
+2. `Start your queue <https://t-mart.github.io/aqueue/#starting-your-queue>`_ with one of those
+   items.
 
 Example
 =======
 
-.. include:: ../examples/simple.py
+.. include:: examples/simple.py
    :code: python
-
-.. teaser-end
 
 Documentation Page
 ==================
