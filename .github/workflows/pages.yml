@@ -40,7 +40,7 @@ jobs:
       - name: Poetry install
         run: poetry install --only docs
       - name: Build docs
-        run: make docs
+        run: poetry run sphinx-build docs/ docs-build/
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
