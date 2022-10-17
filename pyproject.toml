@@ -1,9 +1,27 @@
 [tool.poetry]
 name = "aqueue"
 version = "0.4.0"
-description = "An async queue with live progress display"
+description = "An async task queue with live progress display"
 authors = ["Tim Martin <tim@timmart.in>"]
 readme = "README.rst"
+license = "MIT"
+homepage = "https://t-mart.github.io/aqueue/"
+repository = "https://github.com/t-mart/aqueue"
+documentation = "https://t-mart.github.io/aqueue/"
+keywords = ["queue", "async", "task"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Framework :: Trio"
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
