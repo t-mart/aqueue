@@ -28,7 +28,7 @@ def main() -> None:
     run_queue(
         initial_items=[CItem(), BItem(), CItem(), AItem(), BItem(), AItem()],
         num_workers=1,
-        queue_type_name="priority",
+        order="priority",
     )
 
 

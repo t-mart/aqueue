@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import AsyncIterator, Callable
-from typing import ClassVar, Generic, Literal, Type, TypeVar
+from typing import ClassVar, Generic, Literal, TypeVar
 
 import trio
 from attrs import define, field
@@ -65,7 +65,7 @@ class Item(ABC):
     popped from the queue for processing. Smaller numbers have higher priority.
 
     This attribute has no effect unless `run_queue`/`async_run_queue` is run with
-    ``queue_type_name="priority"``.
+    ``order="priority"``.
     """
 
     parent: Item | None = field(default=None, init=False)
@@ -237,10 +237,11 @@ class PriorityQueue(QueueABC):
 
 
 # names a type of queue for the API
-QueueTypeName = Literal["queue", "stack", "priority"]
+Ordering = Literal["fifo", "lifo", "priority"]
 
-QUEUE_FACTORY: dict[QueueTypeName, Type[QueueABC]] = {
-    "queue": Queue,
-    "stack": Stack,
-    "priority": PriorityQueue,
+QUEUE_FACTORY: dict[Ordering, type[QueueABC]] = {
+    "fifo": Queue,
+    "lifo": Stack,
+    # "priority": PriorityQueue,
+    "priority": QueueABC,
 }

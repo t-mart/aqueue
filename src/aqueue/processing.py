@@ -6,7 +6,7 @@ from functools import partial
 import trio
 
 from aqueue.display import WAIT_MESSAGE, Display, LinkedTask
-from aqueue.queue import QUEUE_FACTORY, Item, Queue, QueueTypeName
+from aqueue.queue import QUEUE_FACTORY, Item, Queue, Ordering
 
 
 async def _worker(
@@ -52,14 +52,14 @@ async def async_run_queue(
     *,
     initial_items: Iterable[Item],
     num_workers: int = 5,
-    queue_type_name: QueueTypeName,
+    order: Ordering,
     graceful_ctrl_c: bool = True,
 ) -> None:
     """
     An asynchronous version of `aqueue.run_queue`. This method must be run in a Trio
     event loop.
     """
-    queue = QUEUE_FACTORY[queue_type_name]()
+    queue = QUEUE_FACTORY[order]()
 
     display = Display.create()
     update_queue_size_progress = display.create_update_queue_size_progress_fn(queue)
@@ -94,7 +94,7 @@ def run_queue(
     *,
     initial_items: Iterable[Item],
     num_workers: int = 5,
-    queue_type_name: QueueTypeName = "queue",
+    order: Ordering = "lifo",
     graceful_ctrl_c: bool = True,
 ) -> None:
     """
@@ -111,19 +111,19 @@ def run_queue(
            Setting a high ``num_workers`` does not automatically mean your program will
            run faster.
 
-    :param Literal["queue", "stack", "priority"] queue_type_name: Can be either of:
+    :param Literal["lifo", "fifo", "priority"] order: Can be either of:
 
-        - ``queue`` for first-in-first-out processing, or breadth-first. This is the
-          default.
-
-        - ``stack`` for last-in-first-out processing, or depth-first. This one is
+        - ``lifo`` for last-in-first-out processing, or depth-first. This one is
           recommended for website scraping because it yields items fast (versus
           ``queue`` that processes intermediate Items first).
+
+        - ``fifo`` for first-in-first-out processing, or breadth-first. This is the
+          default.
 
         - ``priority`` for priority-based processing. In this case, processing will
           occur by *ascending* `aqueue.Item.priority` (smallest first).
 
-        The type for this argument is aliased by `aqueue.QueueTypeName`.
+        The type for this argument is aliased by `aqueue.Ordering`.
 
     :param bool graceful_ctrl_c: specifies whether pressing Ctrl-C will stop things
         abruptly (`False`) or wait until all items being processed by workers are
@@ -138,7 +138,7 @@ def run_queue(
     trio.run(
         partial(
             async_run_queue,
-            queue_type_name=queue_type_name,
+            order=order,
             initial_items=initial_items,
             num_workers=num_workers,
             graceful_ctrl_c=graceful_ctrl_c,

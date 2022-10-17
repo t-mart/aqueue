@@ -76,7 +76,7 @@ class ImageItem(Item):
 def main() -> None:
     run_queue(
         initial_items=[IndexItem()],
-        queue_type_name="stack",
+        order="lifo",
         num_workers=5,
         graceful_ctrl_c=True,
     )

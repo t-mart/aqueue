@@ -57,7 +57,7 @@ Once you've implemented some `aqueue.Item` classes, start your queue to kick thi
 
 .. autofunction:: aqueue.async_run_queue
 
-.. autodata:: aqueue.QueueTypeName
+.. autodata:: aqueue.Ordering
 
 
 Sharing state
