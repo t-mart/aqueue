@@ -1,6 +1,6 @@
 # aqueue
 
-![demo](docs/demo.gif)
+![demo](docs/_static/demo.gif)
 
 An async queue with live progress display. Good for running and visualizing tree-like I/O-bound
 processing jobs, such as website scrapes.
@@ -8,48 +8,34 @@ processing jobs, such as website scrapes.
 ## Example
 
 ```python
-import random
 from typing import ClassVar
+import aqueue
 
-import trio
+class RootItem(aqueue.Item):
 
-from aqueue import EnqueueFn, Item, SetDescFn, run_queue
-
-
-class RootItem(Item):
-    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+    async def process(self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn) -> None:
         # display what we're doing in the worker status panel
-        set_desc("Making child items")
+        set_desc('Processing RootItem')
 
-        for _ in range(3):
-            # simulate doing work and creating more items
-            await trio.sleep(random.random())
-            enqueue(ChildItem())
+        # make an HTTP request, parse it, etc
+        ...
 
-    async def after_children_processed(self) -> None:
-        print("All done!")
+        # when you discover more items you want to process, enqueue them:
+        enqueue(ChildItem())
 
+class ChildItem(aqueue.Item):
 
-class ChildItem(Item):
-    # track these items on the Overall Progress panel
+    # track the enqueueing and completion of these items in the overall panel
     track_overall: ClassVar[bool] = True
 
-    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
-        set_desc("Doing work...")
+    async def process(self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn) -> None:
+        set_desc('Processing ChildItem')
 
-        # Simulate doing work
-        await trio.sleep(random.random())
-
-
-def main() -> None:
-    run_queue(
+if __name__ == "__main__":
+    aqueue.run_queue(
         initial_items=[RootItem()],
         num_workers=2,
     )
-
-
-if __name__ == "__main__":
-    main()
 
 ```
 

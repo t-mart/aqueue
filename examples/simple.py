@@ -1,42 +1,38 @@
-import random
-from typing import ClassVar
-
-import trio
-
-from aqueue import EnqueueFn, Item, SetDescFn, run_queue
+import aqueue
 
 
-class RootItem(Item):
-    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+class RootItem(aqueue.Item):
+    async def process(
+        self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn
+    ) -> None:
         # display what we're doing in the worker status panel
-        set_desc("Making child items")
+        set_desc("Processing RootItem")
 
-        for _ in range(3):
-            # simulate doing work and creating more items
-            await trio.sleep(random.random())
+        # make an HTTP request, parse it, etc
+        ...
+
+        # when you discover more items you want to process, enqueue them:
+        for _ in range(5):
             enqueue(ChildItem())
 
     async def after_children_processed(self) -> None:
+        # run this method when this Item and all other Items it enqueued are done
         print("All done!")
 
 
-class ChildItem(Item):
-    # track these items on the Overall Progress panel
-    track_overall: ClassVar[bool] = True
+class ChildItem(aqueue.Item):
 
-    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
-        set_desc("Doing work...")
+    # track the enqueueing and completion of these items in the overall panel
+    track_overall: bool = True
 
-        # Simulate doing work
-        await trio.sleep(random.random())
-
-
-def main() -> None:
-    run_queue(
-        initial_items=[RootItem()],
-        num_workers=2,
-    )
+    async def process(
+        self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn
+    ) -> None:
+        set_desc("Processing ChildItem")
 
 
 if __name__ == "__main__":
-    main()
+    aqueue.run_queue(
+        initial_items=[RootItem()],
+        num_workers=2,
+    )

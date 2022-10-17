@@ -14,10 +14,44 @@ from aqueue.display import SetDescFn
 
 @define
 class Item(ABC):
-    """An abstract class for items."""
+    """
+    The abstract class for items. Each subclass should represent one unit of work in
+    your problem domain.
+    """
+
+    @abstractmethod
+    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+        """
+        Do this items work. This method is called when an item is popped from the queue.
+
+        This method is required to be implemented.
+
+        Only trio-compatible async primitives can be awaited.
+
+        :param Callable[[Item], None] enqueue: Add an Item object(s) of work to the
+            queue. The type of this function is aliased by `EnqueueFn`.
+
+        :param Callable[[str], None] set_desc: Displays on the a description on the
+            worker status panel. The type of this function is aliased by
+            `SetDescFn`.
+        """
+
+    async def after_children_processed(self) -> None:
+        """
+        Do any kind of cleanup/finalization. This method is called after this item and
+        all the child items enqueued by this item have returned from their ``process``
+        method calls.
+
+        By default, ``Item``'s implementation for this method (a no-op). Implementing it
+        is optional.
+
+        Only trio-compatible async primitives can be awaited.
+        """
 
     track_overall: ClassVar[bool] = False
     """
+    Set this class variable to True to track it in the overall progress panel.
+
     If True, when this item is enqueued, the overall progress *total* will increment,
     and, when this item is done processing, the overall progress *completed* will
     increment.
@@ -25,19 +59,25 @@ class Item(ABC):
 
     priority: ClassVar[int] = 0
     """
-    In priority queues, this number determines the priority of this item. Smaller
-    numbers have higher priority.
+    Set this class variable to indicate priority.
+
+    In priority queues, this number determines the ordering of how Item objects are
+    popped from the queue for processing. Smaller numbers have higher priority.
+
+    This attribute has no effect unless `run_queue`/`async_run_queue` is run with
+    ``queue_type_name="priority"``.
     """
 
-    parent: Item | None = field(default=None)
+    parent: Item | None = field(default=None, init=False)
     """
-    The Item that enqueued this item, or None if it was an initial item.
+    The Item object that enqueued this one, or None if it was an initial item.
 
-    This attribute is only valid inside `process` or after it has been called. This
-    attribute should not be overwritten or mutated.
+    This attribute is only valid inside ``process`` or after it has been called, such as
+    in ``after_children_processed``. This attribute should not be overwritten or
+    mutated.
     """
 
-    _children: list[Item] = field(factory=list)
+    _children: list[Item] = field(factory=list, init=False)
     """
     An internal list of Item objects that this item enqueued when it was processed.
 
@@ -45,38 +85,16 @@ class Item(ABC):
     `after_children_processed` should be called.
     """
 
-    _done_processing: bool = field(default=False)
+    _done_processing: bool = field(default=False, init=False)
     """
     An internal marker that is set to True when this method has completed processing.
     This is needed because, to properly trigger the `after_children_processed` callback,
     aqueue needs to know if an Item might still be processing.
     """
 
-    @abstractmethod
-    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
-        """
-        Do this items work.
-
-        Implementers should call the first arugment with any additional items to enqueue
-        them for later processing. To provide good visual feedback, the second argument
-        should be called with a description string.
-
-        If any async primitives are to be used in this method, they must be compatible
-        with trio.
-        """
-
     async def _process(self, enqueue: EnqueueFn, set_worker_desc: SetDescFn) -> None:
         await self.process(enqueue, set_worker_desc)
         self._done_processing = True
-
-    async def after_children_processed(self) -> None:
-        """
-        This method is called after all child items enqueued by this item are processed.
-        Implementing this method is optional. Again, only trio-compatible primitives are
-        allowed.
-
-        Overriding `Item`'s implementation for this method (a no-op) is optional.
-        """
 
     @property
     def _tree_done(self) -> bool:
