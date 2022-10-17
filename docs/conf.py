@@ -11,6 +11,7 @@ copyright = "2022, Tim Martin"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
+    "sphinxcontrib.mermaid",
 ]
 
 html_theme = "furo"

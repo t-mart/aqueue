@@ -2,18 +2,14 @@
    :start-after: teaser-begin
    :end-before: teaser-end
 
-
-Getting Started
-===============
-
-There's two things you need to do to use aqueue:
-
-1. Implement your `Item <#items>`_ subclasses.
-2. `Start your queue <#starting-your-queue>`_ with one of those
-   items.
-
 Example
 =======
+
+If you had a hierarchy of items like this...
+
+.. mermaid:: _static/simple.mmd
+
+Then, you might process it with ``aqueue`` like this...
 
 .. include:: ../examples/simple.py
    :code: python
@@ -90,3 +86,5 @@ The API is fully docstringed and type-hinted 🥳
 
 .. include:: ../README.rst
    :start-after: -project-information-
+
+.. toctree::

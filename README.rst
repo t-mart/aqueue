@@ -29,8 +29,6 @@ environment:
 
    pip install aqueue
 
-.. teaser-end
-
 Getting Started
 ===============
 
@@ -40,10 +38,18 @@ There's two things you need to do to use aqueue:
 2. `Start your queue <https://t-mart.github.io/aqueue/#starting-your-queue>`_ with one of those
    items.
 
+.. teaser-end
+
 Example
 =======
 
-.. include:: examples/simple.py
+If you had a hierarchy of items like this...
+
+.. mermaid:: /docs/_static/simple.mmd
+
+Then, you might process it with ``aqueue`` like this...
+
+.. include:: /examples/simple.py
    :code: python
 
 Documentation Page
