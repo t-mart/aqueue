@@ -45,7 +45,16 @@ Example
 
 If you had a hierarchy of items like this...
 
-.. mermaid:: /docs/_static/simple.mmd
+.. mermaid::
+
+   flowchart
+      root[Root Item]
+      root-->childa[Child Item]
+      root-->childb[Child Item]
+      root-->childc[Child Item]
+      root-->childd[Child Item]
+      root-->childe[Child Item]
+
 
 Then, you might process it with ``aqueue`` like this...
 

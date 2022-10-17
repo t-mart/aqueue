@@ -31,9 +31,8 @@ class Item(ABC):
         :param Callable[[Item], None] enqueue: Add an Item object(s) of work to the
             queue. The type of this function is aliased by `EnqueueFn`.
 
-        :param Callable[[str], None] set_desc: Displays on the a description on the
-            worker status panel. The type of this function is aliased by
-            `SetDescFn`.
+        :param Callable[[str], None] set_desc: Displays a description on the worker
+            status panel. The type of this function is aliased by `SetDescFn`.
         """
 
     async def after_children_processed(self) -> None:
