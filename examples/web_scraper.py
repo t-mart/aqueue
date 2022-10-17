@@ -10,7 +10,7 @@ from rich import print
 
 from aqueue import EnqueueFn, Item, SetDescFn, run_queue
 
-NUM_PAGES = 5
+NUM_PAGES = 10
 NUM_IMAGES = 7
 
 # keep a list of previously downloaded things, in case of restarts
@@ -18,7 +18,7 @@ visited = {"http://example.com/images/1/2"}
 
 
 @define(kw_only=True)
-class IndexItem(Item):
+class Index(Item):
     """Represents the root level of the scrape"""
 
     URL: ClassVar[str] = "http://example.com/images"
@@ -30,7 +30,7 @@ class IndexItem(Item):
         await trio.sleep(random.random())
 
         for page_number in range(NUM_PAGES):
-            enqueue(PageItem(url=f"{self.URL}/{page_number}"))
+            enqueue(Page(url=f"{self.URL}/{page_number}"))
 
         print("[yellow]Done scraping index")
 
@@ -39,7 +39,7 @@ class IndexItem(Item):
 
 
 @define(kw_only=True)
-class PageItem(Item):
+class Page(Item):
     """Represents a page on a website to scrape"""
 
     url: str
@@ -50,11 +50,11 @@ class PageItem(Item):
         for image_number in range(NUM_IMAGES):
             # simulate page download and parse
             await trio.sleep(random.random())
-            enqueue(ImageItem(url=f"{self.url}/{image_number}"))
+            enqueue(Image(url=f"{self.url}/{image_number}"))
 
 
 @define(kw_only=True)
-class ImageItem(Item):
+class Image(Item):
     """Represents a image on a website to scrape"""
 
     url: str
@@ -75,7 +75,7 @@ class ImageItem(Item):
 
 def main() -> None:
     run_queue(
-        initial_items=[IndexItem()],
+        initial_items=[Index()],
         order="lifo",
         num_workers=5,
         graceful_ctrl_c=True,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from functools import partial
 
 import trio
@@ -13,15 +13,16 @@ async def _worker(
     queue: Queue,
     display: Display,
     worker_status_task: LinkedTask,
-    update_queue_size_progress: Callable[..., None],
     graceful_ctrl_c: bool,
 ):
     async for item in queue:
+        display.remove_from_queue(item)
 
         def enqueue(*children: Item) -> None:
             for child in children:
                 child.parent = item
                 queue.put(child)
+                display.add_to_queue(child)
                 item._children.append(child)
                 if child.track_overall:
                     display.overall_task.total_f += 1
@@ -42,7 +43,6 @@ async def _worker(
         if item.track_overall:
             display.overall_task.completed += 1
         worker_status_task.description = WAIT_MESSAGE
-        update_queue_size_progress()
         queue.task_done()
 
     worker_status_task.description = "Done"
@@ -61,14 +61,14 @@ async def async_run_queue(
     """
     queue = QUEUE_FACTORY[order]()
 
-    display = Display.create()
-    update_queue_size_progress = display.create_update_queue_size_progress_fn(queue)
+    display = Display.create(queue=queue)
 
     display.live.start()
 
     async with trio.open_nursery() as nursery:
         for item in initial_items or []:
             queue.put(item)
+            display.add_to_queue(item)
             if item.track_overall:
                 display.overall_task.total_f += 1
 
@@ -81,7 +81,6 @@ async def async_run_queue(
                     queue=queue,
                     display=display,
                     worker_status_task=worker_status_task,
-                    update_queue_size_progress=update_queue_size_progress,
                     graceful_ctrl_c=graceful_ctrl_c,
                 ),
                 name=f"worker #{worker_id}",  # for debugging/introspection

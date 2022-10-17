@@ -23,9 +23,12 @@ from rich.table import Table
 
 if TYPE_CHECKING:
     # avoid circular reference when just trying to type hint
-    from aqueue.queue import QueueABC
+    from aqueue.queue import QueueABC, Item
 
 WAIT_MESSAGE = "Waiting for work..."
+
+# something obscure to not clash with user names
+TOTAL_QUEUE_COUNT_NAME = "_aqueue_total"
 
 SetDescFn = Callable[[str], None]
 
@@ -100,17 +103,38 @@ class LinkedTask:
         self.update(description=value)
 
 
+@define(kw_only=True)
+class QueueItemCount:
+    linked_task: LinkedTask
+
+    @classmethod
+    def create(cls, progress: Progress, name: str) -> QueueItemCount:
+        linked_task = LinkedTask.create(progress, total=0, name=name)
+        return QueueItemCount(linked_task=linked_task)
+
+    @property
+    def cur_count(self) -> float:
+        return self.linked_task.completed
+
+    @cur_count.setter
+    def cur_count(self, value: int) -> None:
+        self.linked_task.completed = value
+        self.linked_task.total_f = max(value, self.linked_task.total_f)
+
+
 @frozen(kw_only=True)
 class Display:
     """Internal display object that organizes away the complex setup of it all."""
 
+    queue: QueueABC
     live: Live
     overall_task: LinkedTask
-    queue_stats_task: LinkedTask
+    queue_stats_progress: Progress
+    queue_stats_type_tasks: dict[str, QueueItemCount]
     worker_status_progress: Progress  # not a LinkedTask because workers wont yet exist
 
     @classmethod
-    def create(cls) -> Display:
+    def create(cls, queue: QueueABC) -> Display:
         worker_status_progress = Progress(
             SpinnerColumn(),
             TextColumn("[blue]{task.fields[worker_id]}"),
@@ -119,12 +143,16 @@ class Display:
 
         queue_stats_progress = Progress(
             SpinnerColumn(),
-            TextColumn("[blue]Queue Size"),
-            TextColumn("[white]{task.completed} items"),
+            TextColumn("[blue]{task.fields[name]}"),
+            TextColumn("[white]{task.completed} items cur"),
             BarColumn(complete_style="cyan", finished_style="cyan"),
             TextColumn("[white]{task.total} items max"),
         )
-        queue_stats_task = LinkedTask.create(progress=queue_stats_progress, total=0)
+        queue_stats_type_tasks = {
+            TOTAL_QUEUE_COUNT_NAME: QueueItemCount.create(
+                queue_stats_progress, name="Total"
+            )
+        }
 
         overall_progress = Progress(
             SpinnerColumn(),
@@ -145,27 +173,13 @@ class Display:
         live = Live(table)
 
         return Display(
+            queue=queue,
             live=live,
             overall_task=overall_task,
             worker_status_progress=worker_status_progress,
-            queue_stats_task=queue_stats_task,
+            queue_stats_progress=queue_stats_progress,
+            queue_stats_type_tasks=queue_stats_type_tasks,
         )
-
-    def create_update_queue_size_progress_fn(
-        self, queue: QueueABC
-    ) -> Callable[..., None]:
-        # a perhaps-unintended use of a rich progress bar, which will move up/down
-        # with the size of the queue and keep track of its maximum.
-        def update_queue_size_progress() -> None:
-            new_size = len(queue)
-            old_max = self.queue_stats_task.task.total or 0
-
-            self.queue_stats_task.update(
-                completed=new_size,
-                total=max(old_max, new_size),
-            )
-
-        return update_queue_size_progress
 
     def create_worker_status_task(
         self, worker_id: int, description: str = WAIT_MESSAGE
@@ -175,3 +189,18 @@ class Display:
             description=description,
             worker_id=f"#{worker_id}",
         )
+
+    def add_to_queue(self, item: Item) -> None:
+        self.queue_stats_type_tasks[TOTAL_QUEUE_COUNT_NAME].cur_count += 1
+
+        item_class_name = item.__class__.__qualname__
+        if item_class_name not in self.queue_stats_type_tasks:
+            self.queue_stats_type_tasks[item_class_name] = QueueItemCount.create(
+                self.queue_stats_progress, item_class_name
+            )
+
+        self.queue_stats_type_tasks[item_class_name].cur_count += 1
+
+    def remove_from_queue(self, item: Item) -> None:
+        self.queue_stats_type_tasks[TOTAL_QUEUE_COUNT_NAME].cur_count -= 1
+        self.queue_stats_type_tasks[item.__class__.__qualname__].cur_count -= 1

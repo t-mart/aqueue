@@ -242,6 +242,5 @@ Ordering = Literal["fifo", "lifo", "priority"]
 QUEUE_FACTORY: dict[Ordering, type[QueueABC]] = {
     "fifo": Queue,
     "lifo": Stack,
-    # "priority": PriorityQueue,
-    "priority": QueueABC,
+    "priority": PriorityQueue,
 }
