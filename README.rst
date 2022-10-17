@@ -50,3 +50,14 @@ Documentation Page
 ==================
 
 Visit the full documentation site at `<https://t-mart.github.io/aqueue/>`_
+
+.. -project-information-
+
+Project Information
+===================
+
+- **License**: `MIT <https://choosealicense.com/licenses/mit/>`_
+- **PyPI**: https://pypi.org/project/aqueue/
+- **Source Code**: https://github.com/t-mart/aqueue
+- **Documentation**: https://t-mart.github.io/aqueue/
+- **Supported Python Versions**: 3.10 and later

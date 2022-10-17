@@ -87,3 +87,6 @@ Other cool things
 =================
 
 The API is fully docstringed and type-hinted 🥳
+
+.. include:: ../README.rst
+   :start-after: -project-information-
