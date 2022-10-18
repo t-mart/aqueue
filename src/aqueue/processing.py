@@ -115,7 +115,7 @@ def run_queue(
         - ``lifo`` for last-in-first-out processing, or depth-first. This one is
           recommended for website scraping because it yields your deepest items fast,
           which are probably what you're really after (versus ``fifo`` that processes
-          intermediate Items first). This is the default.
+          intermediate items first). This is the default.
 
         - ``fifo`` for first-in-first-out processing, or breadth-first.
 
