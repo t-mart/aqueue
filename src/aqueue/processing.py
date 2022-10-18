@@ -113,11 +113,11 @@ def run_queue(
     :param Literal["lifo", "fifo", "priority"] order: Can be either of:
 
         - ``lifo`` for last-in-first-out processing, or depth-first. This one is
-          recommended for website scraping because it yields items fast (versus
-          ``queue`` that processes intermediate Items first).
+          recommended for website scraping because it yields your deepest items fast,
+          which are probably what you're really after (versus ``fifo`` that processes
+          intermediate Items first). This is the default.
 
-        - ``fifo`` for first-in-first-out processing, or breadth-first. This is the
-          default.
+        - ``fifo`` for first-in-first-out processing, or breadth-first.
 
         - ``priority`` for priority-based processing. In this case, processing will
           occur by *ascending* `aqueue.Item.priority` (smallest first).

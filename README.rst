@@ -6,8 +6,11 @@
 
 ``aqueue`` is an async task queue with live progress display.
 
-You put items in, and they get processed, possibly creating more items which get processed, and so
-on, until all items are completed. A typical use case would be to scrape a website.
+The tasks are items. You put items in, and they get processed, possibly creating more items which
+get processed, and so on, until all items are completed. A typical use case would be to scrape a
+website.
+
+Meanwhile, a nice visualization of the queue's goings-on is displayed in the terminal.
 
 .. image:: https://raw.githubusercontent.com/t-mart/aqueue/master/docs/_static/demo.gif
   :alt: Demonstration of aqueue
