@@ -104,10 +104,6 @@ async def async_run_queue(
     display.live.stop()
 
 
-# .. note::
-
-#   ``aqueue`` is built on top of `Trio <https://trio.readthedocs.io/en/stable/index.html>`_, and,
-#   therefore, you may only use Trio-compatible async primitives inside ``Item`` methods.
 def run_queue(
     *,
     initial_items: Iterable[Item],
