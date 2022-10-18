@@ -1,12 +1,11 @@
-name: Publish to PyPI
+name: Test
 
 on:
   push:
   workflow_dispatch:
 
 jobs:
-  publish:
-    name: Publish
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
