@@ -1,10 +1,10 @@
 # NOTE: all this functionality is fake (it doesn't actually scrape a website). this is
 # just an example to show a use case and implementation
 
+import asyncio
 import random
 from typing import ClassVar
 
-import trio
 from attrs import define
 from rich import print
 
@@ -27,7 +27,7 @@ class Index(Item):
         set_desc(f"[blue]Scraping index at {self.URL}")
 
         # simulate page download and parse
-        await trio.sleep(random.random())
+        await asyncio.sleep(random.random())
 
         for page_number in range(NUM_PAGES):
             enqueue(Page(url=f"{self.URL}/{page_number}"))
@@ -49,7 +49,7 @@ class Page(Item):
 
         for image_number in range(NUM_IMAGES):
             # simulate page download and parse
-            await trio.sleep(random.random())
+            await asyncio.sleep(random.random())
             enqueue(Image(url=f"{self.url}/{image_number}"))
 
 
@@ -66,7 +66,7 @@ class Image(Item):
 
         if self.url not in visited:
             # simulate download
-            await trio.sleep(random.random())
+            await asyncio.sleep(random.random())
             visited.add(self.url)
         else:
             # simulate skipping download because it's already been downloaded

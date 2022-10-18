@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from attrs import define, frozen
 from rich.live import Live
@@ -23,14 +23,14 @@ from rich.table import Table
 
 if TYPE_CHECKING:
     # avoid circular reference when just trying to type hint
-    from aqueue.queue import QueueABC, Item
+    from aqueue.queue import Item, QueueABC
 
 WAIT_MESSAGE = "Waiting for work..."
 
 # something obscure to not clash with user names
 TOTAL_QUEUE_COUNT_NAME = "_aqueue_total"
 
-SetDescFn = Callable[[str], None]
+SetDescFn: TypeAlias = Callable[[str], None]
 
 
 @define(kw_only=True, slots=False)

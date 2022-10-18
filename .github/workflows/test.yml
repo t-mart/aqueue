@@ -2,7 +2,6 @@ name: Publish to PyPI
 
 on:
   push:
-    tags: ["v*"]
   workflow_dispatch:
 
 jobs:
@@ -26,14 +25,3 @@ jobs:
       - name: Test
         run: |
           poetry run pytest
-      - name: Build
-        run: |
-          poetry build
-      - name: Configure PyPI
-        env:
-          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        run: |
-          poetry config pypi-token.pypi "$PYPI_TOKEN"
-      - name: Publish
-        run: |
-          poetry publish
