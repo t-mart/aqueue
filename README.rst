@@ -6,7 +6,7 @@
 
 ``aqueue`` is an async task queue with live progress display.
 
-The tasks are items. You put items in, and they get processed, possibly creating more items which
+You put items (tasks) in, and they get processed, possibly creating more items which
 get processed, and so on, until all items are completed. A typical use case would be to scrape a
 website.
 
