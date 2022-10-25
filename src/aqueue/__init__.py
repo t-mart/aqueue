@@ -1,10 +1,8 @@
-from aqueue.display import SetDescFn
 from aqueue.processing import async_run_queue, run_queue
-from aqueue.queue import EnqueueFn, Item, Ordering
+from aqueue.queue import ProcessRetVal, Item, Ordering
 
 __all__ = (
-    "SetDescFn",
-    "EnqueueFn",
+    "ProcessRetVal",
     "Item",
     "Ordering",
     "run_queue",

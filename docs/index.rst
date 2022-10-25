@@ -26,8 +26,8 @@ Each item must be an instance of a subclass of `aqueue.Item`. Imperatively, you 
 `aqueue.Item.process` method, which defines the work of the item, such as making an HTTP request,
 parsing it, downloading something, etc.
 
-Items can make other items to be processed later. To enqueue them, use the ``enqueue`` method passed
-to the ``process`` method.
+Items can make other items to be processed later. To enqueue them, ``yield`` them from the process
+method.
 
 As a rule of thumb, you should make a new item class whenever you notice a one-to-many relationship.
 For example, "this *one* page has *many* images I want to download".
@@ -35,9 +35,7 @@ For example, "this *one* page has *many* images I want to download".
 .. autoclass:: aqueue.Item
    :members:
 
-.. autodata:: aqueue.EnqueueFn
-
-.. autodata:: aqueue.SetDescFn
+.. autodata:: aqueue.ProcessRetVal
 
 
 Starting your queue
@@ -72,7 +70,7 @@ For example, a URL string may be a good key.
       def __init__(self, url):
          self.url = url
 
-      async def process(self, enqueue, set_desc):
+      async def process(self):
             if self.url in self.visited_urls:
                return
             else:
@@ -104,7 +102,7 @@ If you're looking for a really handy way to persist state across runs, check out
       def __init__(self, url):
          self.url = url
 
-      async def process(self, enqueue, set_desc):
+      async def process(self):
             if self.url in SHELF:
                return
             else:

@@ -12,16 +12,12 @@ async def test_queue_completes():
     ran_children = []
 
     class RootItem(aqueue.Item):
-        async def process(
-            self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn
-        ) -> None:
+        async def process(self) -> aqueue.ProcessRetVal:
             for _ in range(num_children):
-                enqueue(ChildItem())
+                yield ChildItem()
 
     class ChildItem(aqueue.Item):
-        async def process(
-            self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn
-        ) -> None:
+        async def process(self) -> aqueue.ProcessRetVal:
             ran_children.append(True)
 
     await aqueue.async_run_queue(initial_items=[RootItem()])
@@ -47,25 +43,19 @@ async def test_fifo_queue_ordering(
     class AItem(aqueue.Item):
         priority = 1
 
-        async def process(
-            self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn
-        ) -> None:
+        async def process(self) -> aqueue.ProcessRetVal:
             ran_children.append(self.priority)
 
     class BItem(aqueue.Item):
         priority = 2
 
-        async def process(
-            self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn
-        ) -> None:
+        async def process(self) -> aqueue.ProcessRetVal:
             ran_children.append(self.priority)
 
     class CItem(aqueue.Item):
         priority = 3
 
-        async def process(
-            self, enqueue: aqueue.EnqueueFn, set_desc: aqueue.SetDescFn
-        ) -> None:
+        async def process(self) -> aqueue.ProcessRetVal:
             ran_children.append(self.priority)
 
     # some arbitrary, unordered order

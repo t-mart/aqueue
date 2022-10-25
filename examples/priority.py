@@ -1,26 +1,26 @@
 from typing import ClassVar
 
-from aqueue import EnqueueFn, Item, SetDescFn, run_queue
+from aqueue import Item, run_queue, ProcessRetVal
 
 
 class AItem(Item):
     priority: ClassVar[int] = 1
 
-    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+    async def process(self) -> ProcessRetVal:
         print("A")
 
 
 class BItem(Item):
     priority: ClassVar[int] = 2
 
-    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+    async def process(self) -> ProcessRetVal:
         print("B")
 
 
 class CItem(Item):
     priority: ClassVar[int] = 3
 
-    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+    async def process(self) -> ProcessRetVal:
         print("C")
 
 

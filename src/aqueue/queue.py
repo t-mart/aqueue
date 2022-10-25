@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import deque
-from collections.abc import AsyncIterator, Callable
-from typing import ClassVar, Generic, Literal, TypeAlias, TypeVar
+from collections.abc import AsyncIterator, Awaitable
+from typing import ClassVar, Generic, Literal, TypeAlias, TypeVar, cast
+from inspect import isasyncgenfunction
 
 import anyio
 from attrs import define, field
 from sortedcontainers import SortedKeyList
 
-from aqueue.display import SetDescFn
+from aqueue.display import LinkedTask
 
 
 @define
@@ -19,8 +20,10 @@ class Item(ABC):
     your problem domain.
     """
 
+    _worker_status_task: LinkedTask | None = None
+
     @abstractmethod
-    async def process(self, enqueue: EnqueueFn, set_desc: SetDescFn) -> None:
+    async def process(self) -> ProcessRetVal:
         """
         Do this items work. This method is called when an item is popped from the queue.
 
@@ -31,25 +34,32 @@ class Item(ABC):
             import aqueue
 
             class MyItem(aqueue.Item):
-                async def process(self, enqueue, set_desc):
-                    set_desc("MyItem is processing...")
+                async def process(self):
+                    self.set_worker_desc("MyItem is processing...")
 
                     # do some work
                     ...
 
                     # enqueue more items
-                    enqueue(ChildItem())
+                    yeild Childitem()
 
             class ChildItem(aqueue.Item):
-                async def process(self, enqueue, set_desc):
+                async def process(self):
                     pass
 
-        :param enqueue: Add an Item object(s) of work to the
-            queue. The type of this function is aliased by `EnqueueFn`.
-
-        :param set_desc: Displays a description on the worker
-            status panel. The type of this function is aliased by `SetDescFn`.
+        The return value for this method is aliased by `aqueue.ProcessRetVal`.
         """
+
+    def set_worker_desc(self, description: str) -> None:
+        """
+        Set the text description for the worker that is processing this item. If this
+        method is called outside of the process() method, it will raise a RuntimeError.
+
+        This method is a no-op if aqueue is not run with `visual`. TODO TODO fix up link
+        """
+        if self._worker_status_task is None:
+            raise RuntimeError("This function may only be called inside process()")
+        self._worker_status_task.description = description
 
     async def after_children_processed(self) -> None:
         """
@@ -119,7 +129,7 @@ class Item(ABC):
         import aqueue
 
         class MyItem(aqueue.Item):
-            async def process(self, enqueue, set_desc):
+            async def process(self):
                 parent = self.parent
                 if not parent:
                     print("I'm an initial item")
@@ -142,8 +152,22 @@ class Item(ABC):
     aqueue needs to know if an Item might still be processing.
     """
 
-    async def _process(self, enqueue: EnqueueFn, set_worker_desc: SetDescFn) -> None:
-        await self.process(enqueue, set_worker_desc)
+    async def _process(self) -> AsyncIterator[Item]:
+        # we want to allow users to write process() methods that dont yield children
+        # (and thusly, are not async generators). This is a requirement for leaf node
+        # items. unfortunately, working with an async generator is different than
+        # working with a normal awaitable function: you can't await the generators and
+        # you can't iterate on the non-generators... you'll get a TypeError. and it'd be
+        # impossible to know if the type error is from the user's code or from Python
+        # complaining about the way in which it was called (async-for vs await). The
+        # only clean way to figure it out is inspect.isasyncgenfunction, I think.
+        if isasyncgenfunction(self.process):
+            asyncgen = cast(AsyncIterator[Item], self.process())
+            async for child in asyncgen:
+                yield child
+        else:
+            coro = cast(Awaitable[None], self.process())
+            await coro
         self._done_processing = True
 
     @property
@@ -154,9 +178,8 @@ class Item(ABC):
         )
 
 
-# type for the enqueue function
-EnqueueFn: TypeAlias = Callable[[Item], None]
-
+# type for the return value of Item.process
+ProcessRetVal: TypeAlias = AsyncIterator[Item] | None
 
 QueueContainer = TypeVar("QueueContainer")
 

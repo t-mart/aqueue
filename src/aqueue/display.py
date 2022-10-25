@@ -30,8 +30,6 @@ WAIT_MESSAGE = "Waiting for work..."
 # something obscure to not clash with user names
 TOTAL_QUEUE_COUNT_NAME = "_aqueue_total"
 
-SetDescFn: TypeAlias = Callable[[str], None]
-
 
 @define(kw_only=True, slots=False)
 class LinkedTask:

@@ -18,20 +18,18 @@ async def _worker(
     async for item in queue:
         display.remove_from_queue(item)
 
-        def enqueue(*children: Item) -> None:
-            for child in children:
+        with anyio.CancelScope(shield=graceful_ctrl_c):
+            item._worker_status_task = worker_status_task
+            async for child in item._process():
+                if child is None:
+                    continue
                 child.parent = item
                 queue.put(child)
                 display.add_to_queue(child)
                 item._children.append(child)
                 if child.track_overall:
                     display.overall_task.total_f += 1
-
-        def set_worker_desc(description: str) -> None:
-            worker_status_task.description = description
-
-        with anyio.CancelScope(shield=graceful_ctrl_c):
-            await item._process(enqueue, set_worker_desc)
+            item._worker_status_task = None
 
             cur_item: Item | None = item
             while cur_item:
@@ -67,7 +65,7 @@ async def async_run_queue(
         import asyncio, aqueue
 
         class MyItem(aqueue.Item):
-            async def process(self, enqueue, set_desc):
+            async def process(self):
                 pass
 
         asyncio.run(aqueue.async_run_queue(
@@ -124,7 +122,7 @@ def run_queue(
         import aqueue
 
         class MyItem(aqueue.Item):
-            async def process(self, enqueue, set_desc):
+            async def process(self):
                 pass
 
         aqueue.run_queue(
