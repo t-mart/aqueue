@@ -6,7 +6,14 @@ import aqueue
 pytestmark = pytest.mark.anyio
 
 
-async def test_queue_completes():
+@pytest.mark.parametrize(
+    "visualize",
+    [
+        (True,),
+        (False,),
+    ],
+)
+async def test_queue_completes(visualize: bool):
 
     num_children = 5
     ran_children = []
@@ -20,7 +27,7 @@ async def test_queue_completes():
         async def process(self) -> aqueue.ProcessRetVal:
             ran_children.append(True)
 
-    await aqueue.async_run_queue(initial_items=[RootItem()])
+    await aqueue.async_run_queue(initial_items=[RootItem()], visualize=visualize)
 
     assert len(ran_children) == num_children
 
@@ -33,9 +40,17 @@ async def test_queue_completes():
         ("priority", sorted),
     ],
 )
+@pytest.mark.parametrize(
+    "visualize",
+    [
+        (True,),
+        (False,),
+    ],
+)
 async def test_fifo_queue_ordering(
     ordering: aqueue.Ordering,
     list_sort_fn: Callable[[list[int]], list[int]],
+    visualize: bool,
 ):
 
     ran_children = []
@@ -74,6 +89,7 @@ async def test_fifo_queue_ordering(
         # out of order
         num_workers=1,
         order=ordering,
+        visualize=visualize,
     )
 
     assert ran_children == list_sort_fn([item.priority for item in initial_items])

@@ -189,6 +189,7 @@ class Display:
         )
 
     def add_to_queue(self, item: Item) -> None:
+        """Update the display to show that a new item has been added to the queue."""
         self.queue_stats_type_tasks[TOTAL_QUEUE_COUNT_NAME].cur_count += 1
 
         item_class_name = item.__class__.__qualname__
@@ -200,5 +201,6 @@ class Display:
         self.queue_stats_type_tasks[item_class_name].cur_count += 1
 
     def remove_from_queue(self, item: Item) -> None:
+        """Update the display to show that an item has been removed from the queue."""
         self.queue_stats_type_tasks[TOTAL_QUEUE_COUNT_NAME].cur_count -= 1
         self.queue_stats_type_tasks[item.__class__.__qualname__].cur_count -= 1

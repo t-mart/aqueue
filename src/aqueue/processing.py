@@ -2,48 +2,85 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from functools import partial
-
+from attrs import frozen
 import anyio
 
 from aqueue.display import WAIT_MESSAGE, Display, LinkedTask
-from aqueue.queue import QUEUE_FACTORY, Item, Ordering, Queue
+from aqueue.queue import QUEUE_FACTORY, Item, Ordering, QueueABC
 
 
-async def _worker(
-    queue: Queue,
-    display: Display,
-    worker_status_task: LinkedTask,
-    graceful_ctrl_c: bool,
-):
-    async for item in queue:
-        display.remove_from_queue(item)
+@frozen(kw_only=True)
+class Worker:
+    queue: QueueABC[Item]
+    graceful_ctrl_c: bool
 
-        with anyio.CancelScope(shield=graceful_ctrl_c):
-            item._worker_status_task = worker_status_task
-            async for child in item._process():
-                if child is None:
-                    continue
-                child.parent = item
-                queue.put(child)
-                display.add_to_queue(child)
-                item._children.append(child)
-                if child.track_overall:
-                    display.overall_task.total_f += 1
-            item._worker_status_task = None
+    async def loop_for_items(self) -> None:
+        async for item in self.queue:
+            self.before_item_process(item)
+            item._set_worker_desc = self.set_worker_desc
 
-            cur_item: Item | None = item
-            while cur_item:
-                if not cur_item._tree_done:
-                    break
-                await cur_item.after_children_processed()
-                cur_item = cur_item.parent
+            with anyio.CancelScope(shield=self.graceful_ctrl_c):
+                async for child in item._process():
+                    if child is None:
+                        continue
+                    child.parent = item
+                    self.queue.put(child)
+                    item._children.append(child)
+                    self.on_child_enqueued(child)
 
+                cur_item: Item | None = item
+                while cur_item:
+                    if not cur_item._tree_done:
+                        break
+                    await cur_item.after_children_processed()
+                    cur_item = cur_item.parent
+
+            item._set_worker_desc = None
+
+            self.after_item_process(item)
+            self.queue.task_done()
+
+        self.on_worker_complete()
+
+    def before_item_process(self, item: Item) -> None:
+        pass
+
+    def set_worker_desc(self, description: str) -> None:
+        pass
+
+    def on_child_enqueued(self, item: Item) -> None:
+        pass
+
+    def after_item_process(self, item: Item) -> None:
+        pass
+
+    def on_worker_complete(self) -> None:
+        pass
+
+
+@frozen(kw_only=True)
+class VisWorker(Worker):
+    display: Display
+    worker_status_task: LinkedTask
+
+    def set_worker_desc(self, description: str) -> None:
+        self.worker_status_task.description = description
+
+    def before_item_process(self, item: Item) -> None:
+        self.display.remove_from_queue(item)
+
+    def on_child_enqueued(self, item: Item) -> None:
+        self.display.add_to_queue(item)
         if item.track_overall:
-            display.overall_task.completed += 1
-        worker_status_task.description = WAIT_MESSAGE
-        queue.task_done()
+            self.display.overall_task.total_f += 1
 
-    worker_status_task.description = "Done"
+    def after_item_process(self, item: Item) -> None:
+        if item.track_overall:
+            self.display.overall_task.completed += 1
+        self.worker_status_task.description = WAIT_MESSAGE
+
+    def on_worker_complete(self) -> None:
+        self.worker_status_task.description = "Done"
 
 
 async def async_run_queue(
@@ -52,6 +89,7 @@ async def async_run_queue(
     num_workers: int = 5,
     order: Ordering = "lifo",
     graceful_ctrl_c: bool = True,
+    visualize: bool = True,
 ) -> None:
     """
     The coroutine of `aqueue.run_queue`. This function is useful if you want to bring
@@ -74,32 +112,38 @@ async def async_run_queue(
     """
     queue = QUEUE_FACTORY[order]()
 
-    display = Display.create(queue=queue)
-
-    display.live.start()
+    if visualize:
+        display = Display.create(queue=queue)
+        display.live.start()
 
     async with anyio.create_task_group() as task_group:
         for item in initial_items or []:
             queue.put(item)
-            display.add_to_queue(item)
-            if item.track_overall:
-                display.overall_task.total_f += 1
+            if visualize:
+                display.add_to_queue(item)
+                if item.track_overall:
+                    display.overall_task.total_f += 1
 
         for worker_id in range(num_workers):
-            worker_status_task = display.create_worker_status_task(worker_id=worker_id)
+            if visualize:
+                worker: Worker = VisWorker(
+                    queue=queue,
+                    graceful_ctrl_c=graceful_ctrl_c,
+                    display=display,
+                    worker_status_task=display.create_worker_status_task(
+                        worker_id=worker_id
+                    ),
+                )
+            else:
+                worker = Worker(queue=queue, graceful_ctrl_c=graceful_ctrl_c)
 
             task_group.start_soon(
-                partial(
-                    _worker,
-                    queue=queue,
-                    display=display,
-                    worker_status_task=worker_status_task,
-                    graceful_ctrl_c=graceful_ctrl_c,
-                ),
+                worker.loop_for_items,
                 name=f"worker #{worker_id}",  # for debugging/introspection
             )
 
-    display.live.stop()
+    if visualize:
+        display.live.stop()
 
 
 def run_queue(
@@ -108,6 +152,7 @@ def run_queue(
     num_workers: int = 5,
     order: Ordering = "lifo",
     graceful_ctrl_c: bool = True,
+    visualize: bool = True,
 ) -> None:
     """
     Process all items in ``initial_items`` (and any subsequent items they enqueue) until
@@ -160,13 +205,16 @@ def run_queue(
         The type for this argument is aliased by `aqueue.Ordering`.
 
     :param graceful_ctrl_c: specifies whether pressing Ctrl-C will stop things abruptly
-        (`False`) or wait until all items being processed by workers are finished first
-        (`True`, the default).
+        (`False`) or wait until all workers' current items have finished their process()
+        methods and their after_children_processed() methods (`True`, the default). The
+        latter will give you more opportunity to clean up resources, write data, etc.
 
         .. warning::
 
            If you write a buggy item that never finishes, Ctrl-C will have no effect.
 
+    :param visualize: draw a live progress meter display in the terminal while the queue
+        is processed. Setting this to `False` does none of that.
     """
 
     anyio.run(
@@ -176,6 +224,6 @@ def run_queue(
             initial_items=initial_items,
             num_workers=num_workers,
             graceful_ctrl_c=graceful_ctrl_c,
+            visualize=visualize,
         ),
-        # restrict_keyboard_interrupt_to_checkpoints=False,
     )

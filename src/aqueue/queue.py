@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import deque
-from collections.abc import AsyncIterator, Awaitable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import ClassVar, Generic, Literal, TypeAlias, TypeVar, cast
 from inspect import isasyncgenfunction
 
@@ -20,7 +20,8 @@ class Item(ABC):
     your problem domain.
     """
 
-    _worker_status_task: LinkedTask | None = None
+    # _worker_status_task: LinkedTask | Literal[False] | None = None
+    _set_worker_desc: Callable[[str], None] | None = None
 
     @abstractmethod
     async def process(self) -> ProcessRetVal:
@@ -55,11 +56,12 @@ class Item(ABC):
         Set the text description for the worker that is processing this item. If this
         method is called outside of the process() method, it will raise a RuntimeError.
 
-        This method is a no-op if aqueue is not run with `visual`. TODO TODO fix up link
+        This method is a no-op if aqueue is not run with `run_queue`/`async_run_queue`
+        is run with ``visualize=False``
         """
-        if self._worker_status_task is None:
+        if self._set_worker_desc is None:
             raise RuntimeError("This function may only be called inside process()")
-        self._worker_status_task.description = description
+        self._set_worker_desc(description)
 
     async def after_children_processed(self) -> None:
         """
