@@ -19,14 +19,17 @@ class Worker:
             self.before_item_process(item)
             item._set_worker_desc = self.set_worker_desc
 
+            def enqueue(child: Item) -> None:
+                child.parent = item
+                self.queue.put(child)
+                item._children.append(child)
+                self.on_child_enqueued(child)
+            item._enqueue_fn = enqueue
+
+
             with anyio.CancelScope(shield=self.graceful_ctrl_c):
-                async for child in item._process():
-                    if child is None:
-                        continue
-                    child.parent = item
-                    self.queue.put(child)
-                    item._children.append(child)
-                    self.on_child_enqueued(child)
+                await item.process()
+                item._done_processing = True
 
                 cur_item: Item | None = item
                 while cur_item:
@@ -35,6 +38,7 @@ class Worker:
                     await cur_item.after_children_processed()
                     cur_item = cur_item.parent
 
+            item._enqueue_fn = None
             item._set_worker_desc = None
 
             self.after_item_process(item)

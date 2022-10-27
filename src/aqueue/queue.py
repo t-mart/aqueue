@@ -2,15 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import deque
-from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import ClassVar, Generic, Literal, TypeAlias, TypeVar, cast
-from inspect import isasyncgenfunction
+from collections.abc import AsyncIterator, Callable
+from typing import ClassVar, Generic, Literal, TypeAlias, TypeVar
 
 import anyio
 from attrs import define, field
 from sortedcontainers import SortedKeyList
-
-from aqueue.display import LinkedTask
 
 
 @define
@@ -21,10 +18,11 @@ class Item(ABC):
     """
 
     # _worker_status_task: LinkedTask | Literal[False] | None = None
-    _set_worker_desc: Callable[[str], None] | None = None
+    _set_worker_desc: Callable[[str], None] | None = field(default=None, init=False)
+    _enqueue_fn: Callable[[Item], None] | None = field(default=None, init=False)
 
     @abstractmethod
-    async def process(self) -> ProcessRetVal:
+    async def process(self) -> None:
         """
         Do this items work. This method is called when an item is popped from the queue.
 
@@ -42,7 +40,7 @@ class Item(ABC):
                     ...
 
                     # enqueue more items
-                    yeild Childitem()
+                    self.enqueue(Childitem())
 
             class ChildItem(aqueue.Item):
                 async def process(self):
@@ -51,6 +49,17 @@ class Item(ABC):
         The return value for this method is aliased by `aqueue.ProcessRetVal`.
         """
 
+    def enqueue(self, item: Item) -> None:
+        """
+        Enqueue another item for processing by a worker later. If this method is called
+        outside of the process() method, it will raise a RuntimeError.
+
+        :param item: The item to enqueue.
+        """
+        if self._enqueue_fn is None:
+            raise RuntimeError("This function may only be called inside process()")
+        self._enqueue_fn(item)
+
     def set_worker_desc(self, description: str) -> None:
         """
         Set the text description for the worker that is processing this item. If this
@@ -58,6 +67,8 @@ class Item(ABC):
 
         This method is a no-op if aqueue is not run with `run_queue`/`async_run_queue`
         is run with ``visualize=False``
+
+        :param description: The text that the worker display will show.
         """
         if self._set_worker_desc is None:
             raise RuntimeError("This function may only be called inside process()")
@@ -153,24 +164,6 @@ class Item(ABC):
     This is needed because, to properly trigger the `after_children_processed` callback,
     aqueue needs to know if an Item might still be processing.
     """
-
-    async def _process(self) -> AsyncIterator[Item]:
-        # we want to allow users to write process() methods that dont yield children
-        # (and thusly, are not async generators). This is a requirement for leaf node
-        # items. unfortunately, working with an async generator is different than
-        # working with a normal awaitable function: you can't await the generators and
-        # you can't iterate on the non-generators... you'll get a TypeError. and it'd be
-        # impossible to know if the type error is from the user's code or from Python
-        # complaining about the way in which it was called (async-for vs await). The
-        # only clean way to figure it out is inspect.isasyncgenfunction, I think.
-        if isasyncgenfunction(self.process):
-            asyncgen = cast(AsyncIterator[Item], self.process())
-            async for child in asyncgen:
-                yield child
-        else:
-            coro = cast(Awaitable[None], self.process())
-            await coro
-        self._done_processing = True
 
     @property
     def _tree_done(self) -> bool:
@@ -286,8 +279,8 @@ class Stack(QueueABC):
 
 
 def _sortedkeylist_by_item() -> SortedKeyList:
-    def key(item: Item) -> int:
-        return item.priority
+    def key(value: Item) -> int:
+        return value.priority
 
     return SortedKeyList(key=key)
 
@@ -299,7 +292,7 @@ class PriorityQueue(QueueABC):
     appropriately.
     """
 
-    _container: SortedKeyList[Item] = field(factory=_sortedkeylist_by_item)
+    _container: SortedKeyList = field(factory=_sortedkeylist_by_item)
 
     def _put(self, item: Item) -> None:
         self._container.add(item)

@@ -1,26 +1,26 @@
 from typing import ClassVar
 
-from aqueue import Item, run_queue, ProcessRetVal
+from aqueue import Item, run_queue
 
 
 class AItem(Item):
     priority: ClassVar[int] = 1
 
-    async def process(self) -> ProcessRetVal:
+    async def process(self) -> None:
         print("A")
 
 
 class BItem(Item):
     priority: ClassVar[int] = 2
 
-    async def process(self) -> ProcessRetVal:
+    async def process(self) -> None:
         print("B")
 
 
 class CItem(Item):
     priority: ClassVar[int] = 3
 
-    async def process(self) -> ProcessRetVal:
+    async def process(self) -> None:
         print("C")
 
 
