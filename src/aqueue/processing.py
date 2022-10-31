@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
+from contextlib import asynccontextmanager
 from functools import partial
-from attrs import frozen
+from typing import Literal, TypeAlias
+
 import anyio
+from attrs import field, frozen
+from rich.console import Console
 
 from aqueue.display import WAIT_MESSAGE, Display, LinkedTask
 from aqueue.queue import QUEUE_FACTORY, Item, Ordering, QueueABC
@@ -24,8 +28,8 @@ class Worker:
                 self.queue.put(child)
                 item._children.append(child)
                 self.on_child_enqueued(child)
-            item._enqueue_fn = enqueue
 
+            item._enqueue_fn = enqueue
 
             with anyio.CancelScope(shield=self.graceful_ctrl_c):
                 await item.process()
@@ -87,18 +91,144 @@ class VisWorker(Worker):
         self.worker_status_task.description = "Done"
 
 
+@frozen(kw_only=True)
+class QueueRunner:
+    num_workers: int = 5
+    queue: QueueABC
+    graceful_ctrl_c: bool = True
+
+    @classmethod
+    def _init_queue(
+        cls,
+        initial_items: Iterable[Item],
+        order: Ordering,
+    ) -> QueueABC:
+        queue = QUEUE_FACTORY[order]()
+        for item in initial_items:
+            queue.put(item)
+        return queue
+
+    @classmethod
+    def create(
+        cls,
+        initial_items: Iterable[Item],
+        num_workers: int,
+        order: Ordering,
+        graceful_ctrl_c: bool,
+    ) -> QueueRunner:
+        queue = cls._init_queue(initial_items=initial_items, order=order)
+        return QueueRunner(
+            num_workers=num_workers, queue=queue, graceful_ctrl_c=graceful_ctrl_c
+        )
+
+    @asynccontextmanager
+    async def outside_worker_loop_context(self) -> AsyncIterator[None]:
+        """A context manager that is entered/exited outside the main worker loop."""
+        yield
+
+    def create_worker(self, worker_id: int) -> Worker:
+        return Worker(queue=self.queue, graceful_ctrl_c=self.graceful_ctrl_c)
+
+    def after_loop(self) -> None:
+        pass
+
+    async def run(self) -> None:
+        async with self.outside_worker_loop_context():
+            async with anyio.create_task_group() as worker_task_group:
+                for worker_id in range(self.num_workers):
+                    worker = self.create_worker(worker_id)
+                    worker_task_group.start_soon(
+                        worker.loop_for_items,
+                        name=f"worker #{worker_id}",  # for debugging/introspection
+                    )
+        self.after_loop()
+
+
+@frozen(kw_only=True)
+class VisOptions:
+    """
+    A container for settings when visualizing the queue.
+    """
+
+    console: Console | None = field(default=None)
+    """
+    An explicit `rich.console.Console` to print the visualization. This should be
+    provided if your are using a Console elsewhere in your code because it will conflict
+    with aqueue's internal one.
+
+    Setting this to `None` will use the console returned by `rich.get_console`.
+    """
+
+
+@frozen(kw_only=True)
+class VisQueueRunner(QueueRunner):
+    display: Display
+
+    @classmethod
+    def create(
+        cls,
+        initial_items: Iterable[Item],
+        num_workers: int,
+        order: Ordering,
+        graceful_ctrl_c: bool,
+        vis_options: VisOptions | None = None,
+    ) -> VisQueueRunner:
+        queue = cls._init_queue(initial_items=initial_items, order=order)
+
+        console = None
+        if vis_options and vis_options.console:
+            console = vis_options.console
+
+        display = Display.create(queue=queue, console=console)
+        display.live.start()
+
+        for item in initial_items:
+            display.add_to_queue(item)
+            if item.track_overall:
+                display.overall_task.total_f += 1
+
+        return VisQueueRunner(
+            num_workers=num_workers,
+            queue=queue,
+            graceful_ctrl_c=graceful_ctrl_c,
+            display=display,
+        )
+
+    @asynccontextmanager
+    async def outside_worker_loop_context(self) -> AsyncIterator[None]:
+        async with anyio.create_task_group() as live_refresher_task_group:
+            live_refresher_task_group.start_soon(
+                self.display.refresh_task, name="live-refresher"
+            )
+            yield
+            live_refresher_task_group.cancel_scope.cancel()
+
+    def create_worker(self, worker_id: int) -> Worker:
+        return VisWorker(
+            queue=self.queue,
+            graceful_ctrl_c=self.graceful_ctrl_c,
+            display=self.display,
+            worker_status_task=self.display.create_worker_status_task(
+                worker_id=worker_id
+            ),
+        )
+
+    def after_loop(self) -> None:
+        self.display.live.stop()
+
+
 async def async_run_queue(
     *,
     initial_items: Iterable[Item],
     num_workers: int = 5,
     order: Ordering = "lifo",
     graceful_ctrl_c: bool = True,
-    visualize: bool = True,
+    visualize: bool | VisOptions = True,
 ) -> None:
     """
     The coroutine of `aqueue.run_queue`. This function is useful if you want to bring
     your own event loop — either `asyncio` or `trio` event loops are usable with
-    ``aqueue`` (those provided by `AnyIO <https://anyio.readthedocs.io/>`__).
+    ``aqueue`` (those provided by `AnyIO <https://anyio.readthedocs.io/>`_).
 
     The parameters for both functions are the same.
 
@@ -114,40 +244,30 @@ async def async_run_queue(
             initial_items=[MyItem()],
         ))
     """
-    queue = QUEUE_FACTORY[order]()
-
     if visualize:
-        display = Display.create(queue=queue)
-        display.live.start()
+        vis_opions = visualize
+        if vis_opions is True:
+            vis_opions = VisOptions()
 
-    async with anyio.create_task_group() as task_group:
-        for item in initial_items or []:
-            queue.put(item)
-            if visualize:
-                display.add_to_queue(item)
-                if item.track_overall:
-                    display.overall_task.total_f += 1
+        runner: QueueRunner = VisQueueRunner.create(
+            initial_items=initial_items,
+            num_workers=num_workers,
+            order=order,
+            graceful_ctrl_c=graceful_ctrl_c,
+            vis_options=vis_opions,
+        )
+    else:
+        runner = QueueRunner.create(
+            initial_items=initial_items,
+            num_workers=num_workers,
+            order=order,
+            graceful_ctrl_c=graceful_ctrl_c,
+        )
 
-        for worker_id in range(num_workers):
-            if visualize:
-                worker: Worker = VisWorker(
-                    queue=queue,
-                    graceful_ctrl_c=graceful_ctrl_c,
-                    display=display,
-                    worker_status_task=display.create_worker_status_task(
-                        worker_id=worker_id
-                    ),
-                )
-            else:
-                worker = Worker(queue=queue, graceful_ctrl_c=graceful_ctrl_c)
+    await runner.run()
 
-            task_group.start_soon(
-                worker.loop_for_items,
-                name=f"worker #{worker_id}",  # for debugging/introspection
-            )
 
-    if visualize:
-        display.live.stop()
+AsyncBackend: TypeAlias = Literal["trio", "asyncio"]
 
 
 def run_queue(
@@ -156,15 +276,13 @@ def run_queue(
     num_workers: int = 5,
     order: Ordering = "lifo",
     graceful_ctrl_c: bool = True,
-    visualize: bool = True,
+    visualize: bool | VisOptions = True,
+    async_backend: AsyncBackend = "asyncio",
 ) -> None:
     """
     Process all items in ``initial_items`` (and any subsequent items they enqueue) until
-    they are complete. Meanwhile, display a terminal visualization of it.
-
-    This function runs an `asyncio` event loop, which is the default provided by `AnyIO
-    <https://anyio.readthedocs.io>`_. Use `async_run_queue` if you want to use a
-    different event loop.
+    they are complete. Meanwhile, display a terminal visualization of it if
+    ``visualize`` is not `False`.
 
     .. code-block:: python
 
@@ -217,8 +335,21 @@ def run_queue(
 
            If you write a buggy item that never finishes, Ctrl-C will have no effect.
 
-    :param visualize: draw a live progress meter display in the terminal while the queue
-        is processed. Setting this to `False` does none of that.
+    :param visualize: Set to `True` to draw a live progress meter display in the
+        terminal while the queue is processed. Setting this to `False` does none of
+        that.
+
+        Further, you may pass an `aqueue.VisOptions` object here, which acts just like
+        `True`, but lets you configure some things about how the visualization is
+        performed.
+
+    :param async_backend: Specified the asynchronous backend framework with which to run
+        the event loop. Generally speaking, you may not mix-and-match event loops and
+        the async primitives run inside them. Therefore, this argument lets you choose
+        which one to use.
+
+        The supported backends are those provided by `AnyIO`_.
+
     """
 
     anyio.run(
@@ -230,4 +361,5 @@ def run_queue(
             graceful_ctrl_c=graceful_ctrl_c,
             visualize=visualize,
         ),
+        backend=async_backend,
     )

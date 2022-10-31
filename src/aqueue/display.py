@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeAlias
 
+import anyio
 from attrs import define, frozen
+from rich import get_console
+from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
@@ -130,13 +133,18 @@ class Display:
     queue_stats_progress: Progress
     queue_stats_type_tasks: dict[str, QueueItemCount]
     worker_status_progress: Progress  # not a LinkedTask because workers wont yet exist
+    console: Console
 
     @classmethod
-    def create(cls, queue: QueueABC) -> Display:
+    def create(cls, queue: QueueABC, console: Console | None = None) -> Display:
+        if console is None:
+            console = get_console()
+
         worker_status_progress = Progress(
             SpinnerColumn(),
             TextColumn("[blue]{task.fields[worker_id]}"),
             TextColumn("[white]{task.description}"),
+            console=console,
         )
 
         queue_stats_progress = Progress(
@@ -145,6 +153,7 @@ class Display:
             TextColumn("[white]{task.completed} items cur"),
             BarColumn(complete_style="cyan", finished_style="cyan"),
             TextColumn("[white]{task.total} items max"),
+            console=console,
         )
         queue_stats_type_tasks = {
             TOTAL_QUEUE_COUNT_NAME: QueueItemCount.create(
@@ -160,6 +169,7 @@ class Display:
             BarColumn(),
             TimeElapsedColumn(),
             TimeRemainingColumn(),
+            console=console,
         )
         overall_task = LinkedTask.create(progress=overall_progress, total=None)
 
@@ -168,7 +178,10 @@ class Display:
         table.add_row(Panel(queue_stats_progress, title="Queue Stats"))
         table.add_row(Panel(overall_progress, title="Overall Progress"))
 
-        live = Live(table)
+        # with auto_refresh, we must call `refresh()`` manually or `update()`` with
+        # `refresh=True`. But, this is fine because otherwise, rich starts a thread,
+        # which is very anti-async.
+        live = Live(table, auto_refresh=False, console=console)
 
         return Display(
             queue=queue,
@@ -177,6 +190,7 @@ class Display:
             worker_status_progress=worker_status_progress,
             queue_stats_progress=queue_stats_progress,
             queue_stats_type_tasks=queue_stats_type_tasks,
+            console=console,
         )
 
     def create_worker_status_task(
@@ -204,3 +218,15 @@ class Display:
         """Update the display to show that an item has been removed from the queue."""
         self.queue_stats_type_tasks[TOTAL_QUEUE_COUNT_NAME].cur_count -= 1
         self.queue_stats_type_tasks[item.__class__.__qualname__].cur_count -= 1
+
+    def refresh(self) -> None:
+        """Manually refresh the rich.live.Live object."""
+        self.live.refresh()
+
+    async def refresh_task(self, interval_sec: float = 1) -> None:
+        now = anyio.current_time()
+        while True:
+            with anyio.CancelScope(shield=True):  # don't cancel during refresh
+                self.refresh()
+            await anyio.sleep_until(now + interval_sec)
+            now = anyio.current_time()

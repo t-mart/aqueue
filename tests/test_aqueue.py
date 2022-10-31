@@ -9,8 +9,7 @@ pytestmark = pytest.mark.anyio
 @pytest.mark.parametrize(
     "visualize",
     [
-        (True,),
-        (False,),
+        True, False
     ],
 )
 async def test_queue_completes(visualize: bool):
@@ -19,12 +18,12 @@ async def test_queue_completes(visualize: bool):
     ran_children = []
 
     class RootItem(aqueue.Item):
-        async def process(self) -> aqueue.ProcessRetVal:
+        async def process(self) -> None:
             for _ in range(num_children):
-                yield ChildItem()
+                self.enqueue(ChildItem())
 
     class ChildItem(aqueue.Item):
-        async def process(self) -> aqueue.ProcessRetVal:
+        async def process(self) -> None:
             ran_children.append(True)
 
     await aqueue.async_run_queue(initial_items=[RootItem()], visualize=visualize)
@@ -43,8 +42,7 @@ async def test_queue_completes(visualize: bool):
 @pytest.mark.parametrize(
     "visualize",
     [
-        (True,),
-        (False,),
+        True, False
     ],
 )
 async def test_fifo_queue_ordering(
@@ -58,19 +56,19 @@ async def test_fifo_queue_ordering(
     class AItem(aqueue.Item):
         priority = 1
 
-        async def process(self) -> aqueue.ProcessRetVal:
+        async def process(self) -> None:
             ran_children.append(self.priority)
 
     class BItem(aqueue.Item):
         priority = 2
 
-        async def process(self) -> aqueue.ProcessRetVal:
+        async def process(self) -> None:
             ran_children.append(self.priority)
 
     class CItem(aqueue.Item):
         priority = 3
 
-        async def process(self) -> aqueue.ProcessRetVal:
+        async def process(self) -> None:
             ran_children.append(self.priority)
 
     # some arbitrary, unordered order

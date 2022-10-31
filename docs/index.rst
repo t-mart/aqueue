@@ -49,6 +49,9 @@ Once you've implemented some `aqueue.Item` classes, start your queue to kick thi
 
 .. autodata:: aqueue.Ordering
 
+.. autoclass:: aqueue.VisOptions
+   :members:
+
 
 Sharing state
 =============
@@ -86,8 +89,9 @@ If you don't want to or can't use a global variable, consider a `contextvars.Con
 Persisting state
 ================
 
-During development, its probably likely that your program will crash after doing some work. For
-example, maybe your HTTP request timed out or you had a bug in your HTML parsing. It's a shame to lose that work that's been done.
+During development, its likely that your program will crash after doing some work. For
+example, maybe your HTTP request timed out or you had a bug in your HTML parsing. And, it's a shame
+to lose that work that's been done.
 
 If you're looking for a really handy way to persist state across runs, check out the built-in
 `shelve` module. It's like a dict that automatically saves to a file each time you set a key in it.
@@ -114,7 +118,7 @@ If you're looking for a really handy way to persist state across runs, check out
    ))
    SHELF.close()
 
-Otherwise, database inserts, manual file saving, etc are are fair game.
+Otherwise, database inserts (such as `sqlite3`), manual file saving, etc are are fair game.
 
 Other cool things
 =================

@@ -5,12 +5,13 @@ import asyncio
 from typing import ClassVar
 
 from attrs import define
-from rich import print
+from rich import get_console
 
-from aqueue import Item, run_queue
+from aqueue import Item, VisOptions, run_queue
 
 NUM_PAGES = 10
 NUM_IMAGES = 7
+CONSOLE = get_console()
 
 # keep a list of previously downloaded things, in case of restarts
 visited = {"http://example.com/images/1/2"}
@@ -31,10 +32,10 @@ class Index(Item):
         for page_number in range(NUM_PAGES):
             self.enqueue(Page(url=f"{self.URL}/{page_number}"))
 
-        print("[yellow]Done scraping index")
+        CONSOLE.print("[yellow]Done scraping index")
 
     async def after_children_processed(self) -> None:
-        print("All done!")
+        CONSOLE.print("All done!")
 
 
 @define(kw_only=True)
@@ -72,7 +73,7 @@ class Image(Item):
             visited.add(self.url)
         else:
             # simulate skipping download because it's already been downloaded
-            print(f"[violet]Skipping image {self.url}")
+            CONSOLE.print(f"[violet]Skipping image {self.url}")
 
 
 def main() -> None:
@@ -81,6 +82,7 @@ def main() -> None:
         order="lifo",
         num_workers=5,
         graceful_ctrl_c=True,
+        visualize=VisOptions(console=CONSOLE),
     )
 
 

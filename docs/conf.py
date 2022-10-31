@@ -29,6 +29,7 @@ intersphinx_mapping = {
     "https://docs.python.org/3": None,
     "https://trio.readthedocs.io/en/stable/": None,
     "https://anyio.readthedocs.io/en/stable/": None,
+    "https://rich.readthedocs.io/en/stable/": None,
 }
 
 # allow cross-referencing without a specific role
