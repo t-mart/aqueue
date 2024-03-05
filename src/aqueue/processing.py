@@ -15,7 +15,7 @@ from aqueue.queue import QUEUE_FACTORY, Item, Ordering, QueueABC
 
 @frozen(kw_only=True)
 class Worker:
-    queue: QueueABC[Item]
+    queue: QueueABC
     graceful_ctrl_c: bool
 
     async def loop_for_items(self) -> None:

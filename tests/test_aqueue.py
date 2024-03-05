@@ -15,7 +15,7 @@ pytestmark = pytest.mark.anyio
 async def test_queue_completes(visualize: bool):
 
     num_children = 5
-    ran_children = []
+    ran_children: list[bool] = []
 
     class RootItem(aqueue.Item):
         async def process(self) -> None:
@@ -35,7 +35,7 @@ async def test_queue_completes(visualize: bool):
     "ordering, list_sort_fn",
     [
         ("fifo", list),
-        ("lifo", lambda l: list(reversed(l))),
+        ("lifo", lambda lst: list(reversed(lst))), # type: ignore
         ("priority", sorted),
     ],
 )
@@ -51,7 +51,7 @@ async def test_fifo_queue_ordering(
     visualize: bool,
 ):
 
-    ran_children = []
+    ran_children: list[int] = []
 
     class AItem(aqueue.Item):
         priority = 1

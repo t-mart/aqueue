@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import AsyncIterator, Callable
-from typing import ClassVar, Generic, Literal, TypeAlias, TypeVar
+from typing import ClassVar, Literal, TypeAlias, TypeVar
 
 import anyio
 from attrs import define, field
@@ -17,7 +17,6 @@ class Item(ABC):
     your problem domain.
     """
 
-    # _worker_status_task: LinkedTask | Literal[False] | None = None
     _set_worker_desc: Callable[[str], None] | None = field(default=None, init=False)
     _enqueue_fn: Callable[[Item], None] | None = field(default=None, init=False)
 
@@ -180,7 +179,7 @@ QueueContainer = TypeVar("QueueContainer")
 
 
 @define
-class QueueABC(ABC, Generic[QueueContainer]):
+class QueueABC(ABC):
 
     _unfinished_task_count: int = field(init=False, default=0)
 
