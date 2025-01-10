@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aqueue"
-version = "0.9.2"
+version = "0.9.3"
 description = "An async task queue with live progress display"
 authors = ["Tim Martin <tim@timmart.in>"]
 readme = "README.rst"
@@ -25,10 +25,10 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.12"
-attrs = "^23.2.0"
-rich = "^13.7.1"
-sortedcontainers = "^2.4.0"
-anyio = "^4.3.0"
+attrs = "^24"
+rich = "^13"
+sortedcontainers = "^2"
+anyio = "^4"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.8.0"
